@@ -14,6 +14,8 @@ Ideias de minigames para o 1001 Minigames. Marcados com estrela os que mais comb
 - [x] Simon Says
 - [x] Subway Surfers (3D)
 - [x] Pong
+- [x] Space Invaders
+- [x] Asteroids
 
 ---
 
@@ -22,8 +24,8 @@ Ideias de minigames para o 1001 Minigames. Marcados com estrela os que mais comb
 - [ ] Breakout -- quebre os blocos arrastando a barra
 - [ ] Tetris -- encaixe pecas, tela vertical cai perfeito
 - [ ] Pac-Man -- labirinto compacto, swipe pra mudar direcao
-- [ ] Space Invaders -- naves descendo, tap pra atirar
-- [ ] Asteroids -- nave no centro, gira e atira nos asteroides
+- [x] Space Invaders -- naves descendo, tap pra atirar
+- [x] Asteroids -- nave no centro, gira e atira nos asteroides
 
 ## Reflexo / Timing
 - [ ] Tap the Color -- aparece uma cor escrita numa cor diferente (Stroop test), toca na correta

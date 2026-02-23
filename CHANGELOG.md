@@ -1,6 +1,11 @@
 # Changelog
 
+## 2026-02-24
+- **Feature**: Asteroids minigame - virtual joystick controls (hold+drag to thrust/rotate, tap to shoot), asteroids split on hit (large→2 medium→2 small), ship wraps edges, drift physics
+- **UI**: DebugMenu now scrollable with drag-to-scroll and scrollbar (supports 13+ minigames)
+
 ## 2026-02-23
+- **Feature**: Space Invaders minigame - 5x3 alien grid, player ship shoots upward, aliens shoot back, speed increases as aliens die
 - **Feature**: Pong minigame - paddle do jogador embaixo, IA em cima, bola acelera com o tempo
 - **Fix**: Renomeia "Aca-mou" para "Whack-a-Mole" no menu de minigames
 - **Docs**: Mobile-first note no CLAUDE.md, marca Pong como implementado no GAMES_TODO
