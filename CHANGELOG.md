@@ -1,6 +1,9 @@
 # Changelog
 
 ## 2026-02-23
+- **Feature**: Pong minigame - paddle do jogador embaixo, IA em cima, bola acelera com o tempo
+- **Fix**: Renomeia "Aca-mou" para "Whack-a-Mole" no menu de minigames
+- **Docs**: Mobile-first note no CLAUDE.md, marca Pong como implementado no GAMES_TODO
 - **Fix**: Fruit Ninja - corrige camera 3D (up vector degenerado causava inversao do eixo X) e sistema de colisao do slash (colisao continua, trail aging, splash colorido)
 - **Feature**: CLAUDE.md criado com guia de build, arquitetura e convencoes do projeto
 

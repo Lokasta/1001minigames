@@ -13,11 +13,12 @@ Ideias de minigames para o 1001 Minigames. Marcados com estrela os que mais comb
 - [x] Whack-a-Mole
 - [x] Simon Says
 - [x] Subway Surfers (3D)
+- [x] Pong
 
 ---
 
 ## Classicos Reimaginados
-- [ ] Pong -- rebate a bolinha contra a IA, quem marca primeiro perde
+- [x] Pong -- rebate a bolinha contra a IA, quem marca primeiro perde
 - [ ] Breakout -- quebre os blocos arrastando a barra
 - [ ] Tetris -- encaixe pecas, tela vertical cai perfeito
 - [ ] Pac-Man -- labirinto compacto, swipe pra mudar direcao

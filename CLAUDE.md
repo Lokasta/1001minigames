@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TokTok Games is a TikTok-style feed of minigames built with **Haxe** and **Heaps.io** (2D/3D game engine). The app presents minigames in a vertical swipeable feed: Start Screen → Minigame → Score Screen → swipe up → next Minigame.
 
-Design resolution: **360x640** (mobile portrait, LetterBox scale mode).
+Design resolution: **360x640** (mobile portrait, LetterBox scale mode). **Mobile-first**: all minigames are designed for touch input on phones first; PC/mouse is supported but secondary. Input should use touch-friendly patterns (tap, drag, swipe) that naturally map to mouse on desktop.
 
 ## Build & Run Commands
 
