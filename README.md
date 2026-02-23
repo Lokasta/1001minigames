@@ -1,108 +1,141 @@
-# TokTok Games
+# 1001 Minigames
 
-Projeto de jogo com [Heaps.io](https://heaps.io) (engine 2D/3D em Haxe).
+A TikTok-style collection of bite-sized minigames. Swipe up, play, repeat.
 
-## Pré-requisitos
+Built with **Haxe** + **Heaps.io** -- runs on HTML5 and Android.
 
-- **Haxe 4+** (instalado via Homebrew: `brew install haxe`)
-- **Heaps** (instalado via haxelib, ver abaixo)
-- **Node.js** (só para hot reload: `npm run dev`)
+---
 
-## Configuração do ambiente
+## Minigames
 
-No macOS, adicione ao seu `~/.zshrc` (ou `~/.bashrc`):
+| Game | Type | Description |
+|------|------|-------------|
+| Flappy Bird | 2D | Tap to fly through pipes |
+| Dino Runner | 2D | Jump over cacti, endless runner |
+| Snake | 2D | Classic snake -- eat and grow |
+| Guitar Hero | 2D | Hit the notes in rhythm |
+| Fruit Ninja | 3D | Slash falling fruits with your finger |
+| Penalty Shootout | 3D | Aim and kick to score goals |
+| Car Racer | 3D | Dodge traffic on the highway |
+| Whack-a-Mole | 2D | Smash the moles before they hide |
+| Simon Says | 2D | Memorize and repeat the color sequence |
+| Subway Surfers | 3D | Run, dodge trains, collect coins |
 
+...and more coming!
+
+---
+
+## How It Works
+
+The game is a vertical **feed of slides** -- like a social media feed but with games:
+
+1. **Start screen** -- swipe up to begin
+2. **Random minigame** starts instantly
+3. **Lose** -- see your score, swipe up for the next one
+4. Repeat forever
+
+Each minigame implements a simple interface (`IMinigameScene`) and gets dropped into the feed automatically.
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- [Haxe 4.3+](https://haxe.org/download/)
+- [Node.js](https://nodejs.org/) (for the dev server with hot reload)
+
+### Setup
+
+```bash
+# Install Heaps engine
+haxelib git heaps https://github.com/HeapsIO/heaps.git
+
+# Install Node dependencies (dev server)
+npm install
+```
+
+On macOS, you may need to set the Haxe std path:
 ```bash
 export HAXE_STD_PATH="/opt/homebrew/lib/haxe/std"
 ```
 
-Se for a primeira vez usando haxelib, configure o repositório de libs (já feito com `~/haxelib`):
+### Build & Run (HTML5)
 
 ```bash
-haxelib setup
-# e informe: /Users/leonidasmaciel/haxelib
+# One-shot compile
+haxe compile.hxml
+
+# Or dev mode with hot reload
+npm run dev
 ```
 
-## Instalação do Heaps (já feita)
+Open **http://localhost:8080** and start playing.
+
+### Build (Android)
 
 ```bash
-haxelib git heaps https://github.com/HeapsIO/heaps.git
+haxe compile_android.hxml
+cd android && ./gradlew assembleDebug
 ```
 
-## Compilar e rodar
+See [docs/ANDROID.md](docs/ANDROID.md) for the full setup guide.
 
-- **Compilar (HTML5):**  
-  `haxe compile.hxml`  
-  Gera `hello.js` e `hello.js.map`.
+### Deploy to itch.io
 
-- **Rodar no navegador:**  
-  Abra `index.html` no Chrome (ou use F5 no VS Code com a extensão Haxe e launch "Launch Chrome (Heaps HTML5)").
-
-### Hot reload (desenvolvimento)
-
-Para desenvolver e ver as mudanças no jogo sem recarregar manualmente:
-
-1. Instale as dependências de dev (uma vez):  
-   `npm install`
-
-2. Deixe o ambiente Haxe disponível no terminal (ex.: no `~/.zshrc`):  
-   `export HAXE_STD_PATH="/opt/homebrew/lib/haxe/std"`
-
-3. Rode em modo desenvolvimento:  
-   `npm run dev`
-
-Isso sobe um servidor em **http://localhost:8080** e fica observando `src/*.hx` e `compile.hxml`. Ao salvar qualquer arquivo, o projeto recompila e o navegador recarrega sozinho.
-
-## Estrutura
-
-```
-.
-├── .vscode/launch.json
-├── docs/
-│   ├── ARQUITETURA.md         # Feed, slides, minigames, contratos
-│   ├── CONCEITO_TIKTOK_GAMES.md
-│   └── GAME_DESIGN_BRAINSTORM.md
-├── res/
-├── src/
-│   ├── Main.hx                # Entry point, registra minigames no GameFlow
-│   ├── core/                  # Feed: GameFlow, swipe, contratos (IMinigameScene, etc.)
-│   └── scenes/                # StartScreen, ScoreScreen, minigames/*
-├── compile.hxml
-├── index.html
-└── README.md
+```bash
+ITCH_PROJECT=youruser/1001minigames npm run deploy:itch
 ```
 
-Detalhes: [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
+See [docs/ITCH.md](docs/ITCH.md) for details.
 
-## Build Android (app nativo)
+---
 
-A engine Heaps suporta **Android nativo** via HashLink (C) + SDL2. Para gerar um APK:
+## Adding a New Minigame
 
-1. Configura o projeto Android (uma vez): ver [docs/ANDROID.md](docs/ANDROID.md) — clonar `altef/heaps-android` para a pasta `android/`.
-2. Na raiz do projeto: `haxe compile_android.hxml` (gera o C em `android/app/src/main/cpp/out/`).
-3. `cd android && ./gradlew assembleDebug` — APK em `android/app/build/outputs/apk/debug/`.
+1. Create `src/scenes/minigames/YourGame.hx`
+2. Implement `IMinigameScene` (and optionally `IMinigameUpdatable`, `IMinigame3D`, `IMinigameSceneWithLose`)
+3. Register in `Main.hx`:
+   ```haxe
+   gameFlow.registerMinigame("Your Game", function() return new scenes.minigames.YourGame());
+   ```
 
-Requisitos: Android Studio, NDK, CMake e NDK r18b (detalhes no [docs/ANDROID.md](docs/ANDROID.md)).
+That's it. It shows up in the feed rotation and the debug menu.
 
-## Documentação
+---
 
-- [Heaps – Installation](https://heaps.io/documentation/installation.html)
-- [Heaps – Hello World](https://heaps.io/documentation/hello-world.html)
+## Project Structure
 
-### H3D (3D) – referência para o game
+```
+src/
+  Main.hx                    # Entry point, registers all minigames
+  core/                      # GameFlow (feed engine), swipe detection, contracts
+    GameFlow.hx              # Feed of slides: Start -> Play -> Score -> repeat
+    FeedbackManager.hx       # Camera shake, zoom, flash, fade effects
+    IMinigameScene.hx        # Interface every minigame implements
+  scenes/
+    StartScreen.hx           # Initial swipe-up screen
+    ScoreScreen.hx           # Post-game score display
+    minigames/               # All minigame implementations
+  shared/                    # Easing functions, utilities
+```
 
-Documentação principal: **[H3D – Heaps 3D API](https://heaps.io/documentation/h3d.html)**
+See [docs/ARQUITETURA.md](docs/ARQUITETURA.md) for the full architecture doc.
 
-Tópicos úteis para o jogo:
+---
 
-| Tópico | Uso |
-|--------|-----|
-| [Events and interaction](https://heaps.io/documentation/h3d.html#events-and-interaction) | Objetos 3D clicáveis / interação |
-| [Lights](https://heaps.io/documentation/h3d.html#lights) | Luz direcional, point lights |
-| [Material Basics](https://heaps.io/documentation/h3d.html#material-basics) | Materiais, cores, texturas |
-| [PBR Materials](https://heaps.io/documentation/h3d.html#pbr-materials) | Materiais realistas (opcional) |
-| [Shadows](https://heaps.io/documentation/h3d.html#shadows) | Sombras em tempo real |
-| [FBX Models](https://heaps.io/documentation/h3d.html#fbx-models) | Modelos 3D exportados |
-| [GPU Particles](https://heaps.io/documentation/h3d.html#gpu-particles) | Partículas em GPU |
-| [World Batching](https://heaps.io/documentation/h3d.html#world-batching) | Otimização de draw calls |
-| [Render Target](https://heaps.io/documentation/h3d.html#render-target) | Render para textura |
+## Debug
+
+Press **K** to open the debug menu and jump directly to any minigame.
+
+---
+
+## Tech Stack
+
+- **[Haxe](https://haxe.org/)** -- typed, cross-platform language
+- **[Heaps.io](https://heaps.io/)** -- high-performance 2D/3D game engine
+- **Targets**: HTML5 (WebGL), Android (native via HashLink)
+
+## License
+
+MIT -- open source, have fun with it!
