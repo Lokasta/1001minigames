@@ -22,11 +22,13 @@ out/
 *.dylib
 *.bundle
 
+# Node (dev only)
+node_modules/
+
 # IDE / OS
 .DS_Store
 .idea/
 *.iml
-.vscode/
 *.code-workspace
 
 # Build artifacts
@@ -35,3 +37,6 @@ build/
 dist/
 hello.js
 hello.js.map
+
+# Android (clone heaps-android here; local build state)
+android/

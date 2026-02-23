@@ -1,0 +1,15 @@
+# Build for Android (HashLink/C + SDL)
+# Output goes to android/app/src/main/cpp/out/ for the native Android project.
+# Requires: android/ project from heaps-android (e.g. altef/heaps-android).
+
+-cp src
+-main Main
+-lib heaps
+-lib format
+-lib hlsdl
+
+# HashLink C output (Android NDK will compile this)
+-hl android/app/src/main/cpp/out/main.c
+
+# Debug symbols for development
+-D debug

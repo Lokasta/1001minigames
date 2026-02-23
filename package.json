@@ -1,0 +1,16 @@
+{
+  "name": "toktokgames",
+  "private": true,
+  "scripts": {
+    "build": "haxe compile.hxml",
+    "build:android": "haxe compile_android.hxml",
+    "watch": "nodemon --watch src --watch compile.hxml --ext hx,hxml --delay 0.3 --exec \"haxe compile.hxml\"",
+    "serve": "live-server . --port=8080 --open=index.html",
+    "dev": "concurrently -n watch,serve -c blue,green \"npm run watch\" \"npm run serve\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "live-server": "^1.2.2",
+    "nodemon": "^3.1.0"
+  }
+}
