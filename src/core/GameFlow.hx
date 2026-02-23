@@ -44,6 +44,12 @@ class GameFlow {
 	var debugMenu: DebugMenu;
 	var debugMenuKeyPressed: Bool;
 
+	// 3-finger hold to open debug menu on mobile
+	var activeTouches: Map<Int, Bool>;
+	var threeTouchTimer: Float;
+	static var DEBUG_HOLD_TIME = 3.0;
+	static var DEBUG_TOUCH_COUNT = 3;
+
 	/** Sistema de feedback (shake, zoom, flash, fade, FOV, etc.). Minigames usam via gameFlow.feedback. */
 	public var feedback: FeedbackManager;
 
@@ -61,6 +67,12 @@ class GameFlow {
 		transitionSkipOutgoing = false;
 		debugMenuKeyPressed = false;
 		debugMenu = null;
+		activeTouches = new Map();
+		threeTouchTimer = 0;
+
+		// Multi-touch listener for 3-finger debug menu activation
+		var win = hxd.Window.getInstance();
+		win.addEventTarget(onWindowEvent);
 
 		// SwipeDetector primeiro para ficar "atrás"; slideContainer em cima para minigames receberem input
 		swipe = new SwipeDetector(root, designW, designH);
@@ -95,6 +107,29 @@ class GameFlow {
 	function ensureDebugMenu() {
 		if (debugMenu != null) return;
 		debugMenu = new DebugMenu(root, designW, designH, minigameNames, onDebugSelectMinigame);
+	}
+
+	function onWindowEvent(e: hxd.Event) {
+		switch (e.kind) {
+			case EPush:
+				activeTouches.set(e.touchId, true);
+				// Reset timer when touch count changes
+				var count = countTouches();
+				if (count >= DEBUG_TOUCH_COUNT)
+					threeTouchTimer = 0;
+			case ERelease, EReleaseOutside:
+				activeTouches.remove(e.touchId);
+				if (countTouches() < DEBUG_TOUCH_COUNT)
+					threeTouchTimer = 0;
+			default:
+		}
+	}
+
+	function countTouches(): Int {
+		var c = 0;
+		for (_ in activeTouches)
+			c++;
+		return c;
 	}
 
 	public function toggleDebugMenu(): Bool {
@@ -212,10 +247,20 @@ class GameFlow {
 	}
 
 	public function update(dt: Float) {
-		// Debug menu: K toggle, Esc fecha
+		// Debug menu: K toggle, Esc fecha, 3-finger hold (mobile)
 		if (hxd.Key.isPressed(hxd.Key.K)) toggleDebugMenu();
 		if (isDebugMenuVisible() && hxd.Key.isPressed(hxd.Key.ESCAPE)) {
 			debugMenu.visible = false;
+		}
+		// 3-finger hold for mobile
+		if (countTouches() >= DEBUG_TOUCH_COUNT && !isDebugMenuVisible()) {
+			threeTouchTimer += dt;
+			if (threeTouchTimer >= DEBUG_HOLD_TIME) {
+				threeTouchTimer = 0;
+				toggleDebugMenu();
+			}
+		} else if (countTouches() < DEBUG_TOUCH_COUNT) {
+			threeTouchTimer = 0;
 		}
 
 		if (transitioning) {
@@ -245,6 +290,7 @@ class GameFlow {
 	}
 
 	public function dispose() {
+		hxd.Window.getInstance().removeEventTarget(onWindowEvent);
 		if (feedback != null) {
 			feedback.destroy();
 			feedback = null;
