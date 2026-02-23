@@ -12,6 +12,7 @@ import h3d.prim.Cube;
 import h3d.Vector;
 import h3d.col.Ray;
 import h3d.col.Plane;
+import h3d.scene.Graphics as Graphics3D;
 import core.IMinigameScene;
 import core.MinigameContext;
 import core.IMinigameSceneWithLose;
@@ -29,12 +30,19 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 	static var SPAWN_INTERVAL = 0.85;
 	static var BOMB_CHANCE = 0.14;
 	static var MISS_LIMIT = 3;
-	static var SWIPE_STEP_PX = 12;
-	static var SWIPE_RADIUS = 22;
+	static var SWIPE_STEP_PX = 6;
+	/** Margem do collider em % do raio da fruta (ex: 1.25 = 25% maior que o visual). */
+	static var COLLIDER_SCALE = 1.25;
+	/** Se passou esse tempo (s) desde o último ponto, adiciona ponto mesmo sem mover 6px (corta em qualquer direção). */
+	static var SWIPE_MIN_INTERVAL = 0.04;
+	/** Tempo de vida do trail em segundos: só a parte "ativa" (recente) corta e é desenhada; ponta mais velha é descartada. */
+	static var TRAIL_MAX_AGE = 0.25;
 	static var COMBO_TEXT_DURATION = 0.4;
 	static var PLANE_Y0: Plane = new Plane(0, 1, 0, 0);
 	/** Escala design→3D: área 360×640 cabe no frustum da câmera. */
 	static var DESIGN_TO_3D_SCALE = 0.012;
+	/** true = desenha círculos dos colliders (design + hit radius) para debug. */
+	static var DEBUG_COLLIDERS = false;
 
 	var s3d: Scene;
 	final contentObj: Object;
@@ -48,14 +56,16 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 	var fruitsG: Graphics;
 	var slashG: Graphics;
 	var splashG: Graphics;
+	var debugCollidersG: Graphics;
+	var debugColliders3D: Null<Graphics3D>;
 	var scoreText: Text;
 	var comboText: Text;
 	var livesText: Text;
 	var interactive: Interactive;
 
 	var items: Array<FruitItem>;
-	var swipePoints: Array<{ x: Float, y: Float }>;
-	var splashes: Array<{ x: Float, y: Float, t: Float }>;
+	var swipePoints: Array<{ x: Float, y: Float, t: Float }>;
+	var splashes: Array<{ x: Float, y: Float, t: Float, color: Int }>;
 	var pieces: Array<CutPiece>;
 	var sceneObjects: Array<h3d.scene.Object>;
 	var spawnTimer: Float;
@@ -67,6 +77,9 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 	var gameOver: Bool;
 	var lastSwipeX: Float;
 	var lastSwipeY: Float;
+	/** Posição corrente do dedo/mouse (atualizada em todo onMove, mesmo sem addPoint). */
+	var currentSwipeX: Float;
+	var currentSwipeY: Float;
 
 	public var content(get, never): Object;
 	inline function get_content() return contentObj;
@@ -75,10 +88,12 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		s3d = scene;
 	}
 
-	/** Converte coordenada X do design (0..360) para 3D. */
+	/** Converte coordenada X do design (0..360) para 3D world X. */
 	inline function designTo3Dx(x: Float): Float return (x / designW - 0.5) * (designW * DESIGN_TO_3D_SCALE);
-	/** Converte Y do design (0=topo, 640=baixo) para 3D Z (baixo da tela = +Z, topo = -Z, para subir de baixo pra cima). */
-	inline function designTo3Dz(y: Float): Float return (y / designH - 0.5) * (designH * DESIGN_TO_3D_SCALE);
+	/** Converte Y do design (0=topo, 640=baixo) para 3D world Z.
+		Invertido: topo da tela (y=0) → +Z, baixo (y=640) → -Z.
+		Necessário porque com up=(0,0,1) o eixo Y da câmera aponta em +Z. */
+	inline function designTo3Dz(y: Float): Float return (0.5 - y / designH) * (designH * DESIGN_TO_3D_SCALE);
 
 	public function new() {
 		designW = DESIGN_W;
@@ -101,6 +116,7 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		fruitsG = new Graphics(contentObj);
 		slashG = new Graphics(contentObj);
 		splashG = new Graphics(contentObj);
+		debugCollidersG = new Graphics(contentObj);
 
 		scoreText = new Text(hxd.res.DefaultFont.get(), contentObj);
 		scoreText.text = "0";
@@ -129,26 +145,39 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		interactive.onPush = function(e: Event) {
 			if (gameOver || ctx == null) return;
 			if (!started) started = true;
+			var now = haxe.Timer.stamp();
 			var x = clampDesign(e.relX, 0, designW);
 			var y = clampDesign(e.relY, 0, designH);
-			swipePoints = [{ x: x, y: y }];
+			swipePoints = [{ x: x, y: y, t: now }];
 			lastSwipeX = x;
 			lastSwipeY = y;
+			currentSwipeX = x;
+			currentSwipeY = y;
 			e.propagate = false;
 		};
 		interactive.onMove = function(e: Event) {
 			if (swipePoints == null) return;
 			var x = clampDesign(e.relX, 0, designW);
 			var y = clampDesign(e.relY, 0, designH);
+			currentSwipeX = x;
+			currentSwipeY = y;
+			var now = haxe.Timer.stamp();
 			var dx = x - lastSwipeX;
 			var dy = y - lastSwipeY;
-			if (dx * dx + dy * dy >= SWIPE_STEP_PX * SWIPE_STEP_PX) {
-				swipePoints.push({ x: x, y: y });
+			var distSq = dx * dx + dy * dy;
+			var lastT = swipePoints.length > 0 ? swipePoints[swipePoints.length - 1].t : 0.0;
+			var addPoint = distSq >= SWIPE_STEP_PX * SWIPE_STEP_PX
+				|| (swipePoints.length > 0 && (now - lastT) >= SWIPE_MIN_INTERVAL);
+			if (addPoint) {
+				swipePoints.push({ x: x, y: y, t: now });
 				lastSwipeX = x;
 				lastSwipeY = y;
-				if (swipePoints.length >= 2)
-					processSlash();
+				// Mantém trail curto: remove ponta mais velha
+				while (swipePoints.length > 0 && (now - swipePoints[0].t) > TRAIL_MAX_AGE)
+					swipePoints.shift();
 			}
+			// Sempre testa colisão (inclui segmento até a posição corrente do mouse)
+			processSlash();
 		};
 		interactive.onRelease = function(e: Event) {
 			if (swipePoints == null || swipePoints.length < 2) {
@@ -166,16 +195,36 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		return v < min ? min : (v > max ? max : v);
 	}
 
+	/** Pontos do trail que ainda estão “vivos” + posição atual do dedo/mouse.
+		Garante que sempre existe um segmento até onde o dedo está agora. */
+	function getActiveTrailPoints(): Array<{ x: Float, y: Float }> {
+		if (swipePoints == null || swipePoints.length == 0) return [];
+		var now = haxe.Timer.stamp();
+		var out: Array<{ x: Float, y: Float }> = [];
+		for (p in swipePoints)
+			if (now - p.t <= TRAIL_MAX_AGE)
+				out.push({ x: p.x, y: p.y });
+		// Sempre inclui a posição corrente do dedo (pode estar entre dois pontos gravados)
+		if (out.length > 0) {
+			var last = out[out.length - 1];
+			var dx = currentSwipeX - last.x;
+			var dy = currentSwipeY - last.y;
+			if (dx * dx + dy * dy > 1)
+				out.push({ x: currentSwipeX, y: currentSwipeY });
+		}
+		return out;
+	}
+
 	/** Colisão no espaço 3D: swipe → raio da câmera → plano y=0 → segmento vs círculo em XZ. */
-	function processSlash3D(toRemove: Array<FruitItem>) {
+	function processSlash3D(toRemove: Array<FruitItem>, points: Array<{ x: Float, y: Float }>) {
 		var scene = contentObj.getScene();
-		if (scene == null || swipePoints.length < 2) return;
+		if (scene == null || points.length < 2) return;
 		var vw = scene.width;
 		var vh = scene.height;
 		if (vw <= 0 || vh <= 0) return;
 		s3d.camera.update();
 		var pts: Array<{ x: Float, z: Float }> = [];
-		for (p in swipePoints) {
+		for (p in points) {
 			var vpX = p.x * vw / designW;
 			var vpY = p.y * vh / designH;
 			var ray = s3d.camera.rayFromScreen(vpX, vpY, vw, vh);
@@ -187,7 +236,7 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		for (item in items) {
 			var cx = designTo3Dx(item.x);
 			var cz = designTo3Dz(item.y);
-			var r3d = (item.r / 25) * 0.35 + 0.22;
+			var r3d = (item.r / 25) * 0.35 * COLLIDER_SCALE;
 			if (segmentIntersectsCircle3D(pts, cx, cz, r3d))
 				toRemove.push(item);
 		}
@@ -217,17 +266,17 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 	}
 
 	function processSlash() {
+		if (ctx == null || gameOver) return;
+		var active = getActiveTrailPoints();
+		if (active.length < 2) return;
 		var hitCount = 0;
 		var hitBomb = false;
 		var toRemove: Array<FruitItem> = [];
-		if (s3d != null) {
-			processSlash3D(toRemove);
-		} else {
-			for (item in items) {
-				var hitR = item.r + SWIPE_RADIUS;
-				if (segmentIntersectsCircleList(item.x, item.y, hitR))
-					toRemove.push(item);
-			}
+		// Sempre colisão em 2D (design): mesma lógica para qualquer direção do slash; 3D é só visual.
+		for (item in items) {
+			var hitR = item.r * COLLIDER_SCALE;
+			if (segmentIntersectsCircleList(active, item.x, item.y, hitR))
+				toRemove.push(item);
 		}
 		for (item in toRemove) {
 			if (item.isBomb) hitBomb = true;
@@ -268,10 +317,10 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		}
 	}
 
-	function segmentIntersectsCircleList(cx: Float, cy: Float, r: Float): Bool {
-		for (i in 0...swipePoints.length - 1) {
-			var a = swipePoints[i];
-			var b = swipePoints[i + 1];
+	function segmentIntersectsCircleList(points: Array<{ x: Float, y: Float }>, cx: Float, cy: Float, r: Float): Bool {
+		for (i in 0...points.length - 1) {
+			var a = points[i];
+			var b = points[i + 1];
 			if (segmentIntersectsCircle(a.x, a.y, b.x, b.y, cx, cy, r)) return true;
 		}
 		return false;
@@ -293,7 +342,7 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 
 	function addSplash(x: Float, y: Float, color: Int) {
 		for (_ in 0...8)
-			splashes.push({ x: x + (Math.random() - 0.5) * 30, y: y + (Math.random() - 0.5) * 30, t: 0.25 });
+			splashes.push({ x: x + (Math.random() - 0.5) * 30, y: y + (Math.random() - 0.5) * 30, t: 0.0, color: color });
 	}
 
 	function spawnCutPieces(item: FruitItem) {
@@ -421,12 +470,51 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 
 	function drawSlash() {
 		slashG.clear();
-		if (swipePoints == null || swipePoints.length < 2) return;
-		slashG.lineStyle(6, 0xFFFFFF, 0.7);
-		slashG.moveTo(swipePoints[0].x, swipePoints[0].y);
-		for (i in 1...swipePoints.length)
-			slashG.lineTo(swipePoints[i].x, swipePoints[i].y);
+		var active = getActiveTrailPoints();
+		if (active.length < 2) return;
+		// Desenha segmentos com fade na ponta mais velha (parece um dash curto)
+		var n = active.length;
+		for (i in 0...n - 1) {
+			var t = (i + 0.5) / n; // 0 na cauda, 1 na ponta
+			var alpha = 0.25 + 0.7 * t;
+			var w = 3 + 4 * t;
+			slashG.lineStyle(w, 0xFFFFFF, alpha);
+			slashG.moveTo(active[i].x, active[i].y);
+			slashG.lineTo(active[i + 1].x, active[i + 1].y);
+		}
 		slashG.lineStyle(0);
+	}
+
+	/** Desenha os colliders (círculos de hit) para debug. Verde = raio base, amarelo = raio + tolerância. */
+	function drawDebugColliders() {
+		if (!DEBUG_COLLIDERS) return;
+		debugCollidersG.clear();
+		if (s3d != null) {
+			if (debugColliders3D == null) {
+				debugColliders3D = new Graphics3D(s3d);
+				debugColliders3D.is3D = true;
+			}
+			debugColliders3D.clear();
+			for (item in items) {
+				var cx = designTo3Dx(item.x);
+				var cz = designTo3Dz(item.y);
+				var r3d = (item.r / 25) * 0.35 * COLLIDER_SCALE;
+				debugColliders3D.lineStyle(0.03, item.isBomb ? 0xFF0000 : 0x00FF00, 0.9);
+				debugColliders3D.moveTo(cx + r3d, 0, cz);
+				var n = 24;
+				for (i in 1...n + 1) {
+					var a = (i / n) * Math.PI * 2;
+					debugColliders3D.lineTo(cx + r3d * Math.cos(a), 0, cz + r3d * Math.sin(a));
+				}
+			}
+		} else {
+			for (item in items) {
+				var hitR = item.r * COLLIDER_SCALE;
+				debugCollidersG.lineStyle(2, item.isBomb ? 0xFF0000 : 0x00FF00, 0.9);
+				debugCollidersG.drawCircle(item.x, item.y, hitR);
+				debugCollidersG.lineStyle(0);
+			}
+		}
 	}
 
 	function drawSplashes() {
@@ -435,7 +523,7 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 			var alpha = 1 - s.t / 0.25;
 			if (alpha <= 0) continue;
 			var scale = 1 + (1 - alpha) * 1.5;
-			splashG.beginFill(0xFFFFFF, alpha * 0.9);
+			splashG.beginFill(s.color, alpha * 0.9);
 			splashG.drawCircle(s.x, s.y, 6 * scale);
 			splashG.endFill();
 		}
@@ -449,12 +537,22 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		if (s3d == null) return;
 		savedCamPos.load(s3d.camera.pos);
 		savedCamTarget.load(s3d.camera.target);
-		// Câmera olha -Z; plano XZ com Z para cima (frutas em Y=0, movendo em X e Z)
-		s3d.camera.pos.set(0, 11, 0);
+
+		// Câmera top-down em altura grande: distorção de perspectiva < 0.5% (desprezível).
+		// up=(0,0,1) garante: eixo X da câmera = world +X (direita), eixo Y da câmera = world +Z (cima na tela).
+		// O designTo3Dz é invertido pra compensar (y=0/topo → +Z, y=640/baixo → -Z).
+		// Com up=(0,1,0) o eixo era degenerado e o Heaps invertia o X — causa raiz do bug original.
+		var camHeight = 50.0;
+		s3d.camera.pos.set(0, camHeight, 0);
 		s3d.camera.target.set(0, 0, 0);
-		if (s3d.camera.up != null) s3d.camera.up.set(0, 1, 0);
+		if (s3d.camera.up != null) s3d.camera.up.set(0, 0, 1);
 		s3d.camera.screenRatio = designW / designH;
-		s3d.camera.fovY = 44;
+		// fovY calculado para que a área visível no plano y=0 coincida com o design space 3D.
+		// half_height_3D = designH * DESIGN_TO_3D_SCALE * 0.5 = 3.84
+		// fovY = 2 * atan(half_height_3D / camHeight)
+		var halfH3D = (designH * DESIGN_TO_3D_SCALE) * 0.5;
+		s3d.camera.fovY = 2 * Math.atan(halfH3D / camHeight) * (180 / Math.PI);
+
 		var light = new h3d.scene.fwd.DirLight(new Vector(0.3, -0.8, 0.4), s3d);
 		light.enableSpecular = true;
 		sceneObjects.push(light);
@@ -491,6 +589,10 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		pieces = [];
 		for (o in sceneObjects) o.remove();
 		sceneObjects = [];
+		if (debugColliders3D != null) {
+			debugColliders3D.remove();
+			debugColliders3D = null;
+		}
 		if (s3d != null && savedCamPos != null) {
 			s3d.camera.pos.load(savedCamPos);
 			s3d.camera.target.load(savedCamTarget);
@@ -509,6 +611,7 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 			drawFruits();
 			drawSlash();
 			drawSplashes();
+			if (DEBUG_COLLIDERS) drawDebugColliders();
 			return;
 		}
 
@@ -517,10 +620,13 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 			item.x += item.vx * dt;
 			item.y += item.vy * dt;
 			if (item.mesh != null) {
-				// Eixos 3D: X = horizontal tela, Z = “vertical” tela (câmera vê XZ com Z para cima)
 				item.mesh.setPosition(designTo3Dx(item.x), 0, designTo3Dz(item.y));
 			}
 		}
+
+		// Colisão contínua: frutas se movem todo frame, então testa contra o trail ativo a cada frame
+		if (swipePoints != null && swipePoints.length >= 2)
+			processSlash();
 
 		var j = pieces.length - 1;
 		while (j >= 0) {
@@ -587,6 +693,7 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		drawPieces();
 		drawSlash();
 		drawSplashes();
+		if (DEBUG_COLLIDERS) drawDebugColliders();
 	}
 
 	function updateLivesText() {
