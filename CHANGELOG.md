@@ -1,6 +1,8 @@
 # Changelog
 
 ## 2026-02-24
+- **Feature**: Penalty 3D game feel overhaul — swipe power affects shot speed, gravity arc, after-touch to bend ball mid-flight, post/crossbar/keeper collision with bouncing, ball flies into distance on miss
+- **Fix**: FeedbackManager shake2D no longer clobbers 3D camera on shake end
 - **Fix**: Penalty 3D camera now consistent — full goal, keeper, and ball always visible on init and restart
 - **Feature**: Pac-Man minigame - compact maze, swipe to change direction, eat dots & power pellets, 3 ghosts with chase/scared AI, tunnel wrapping, score = dots eaten + ghost bonuses
 - **Feature**: Asteroids minigame - virtual joystick controls (hold+drag to thrust/rotate, tap to shoot), asteroids split on hit (large→2 medium→2 small), ship wraps edges, drift physics

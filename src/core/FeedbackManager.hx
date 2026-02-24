@@ -280,9 +280,11 @@ class FeedbackManager {
 			}
 		} else if (shakeDuration > 0) {
 			shakeDuration = 0;
-			contentRoot.x = 0;
-			contentRoot.y = 0;
-			if (s3d != null) {
+			if (!shakeIs3D) {
+				contentRoot.x = 0;
+				contentRoot.y = 0;
+			}
+			if (shakeIs3D && s3d != null) {
 				s3d.camera.pos.load(savedCamPos);
 				s3d.camera.target.load(savedCamTarget);
 			}

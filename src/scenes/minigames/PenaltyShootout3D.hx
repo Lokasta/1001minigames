@@ -9,7 +9,6 @@ import h3d.scene.Scene;
 import h3d.scene.Mesh;
 import h3d.prim.Cube;
 import h3d.Vector;
-import core.IMinigameScene;
 import core.MinigameContext;
 import core.IMinigameSceneWithLose;
 import core.IMinigameUpdatable;
@@ -17,6 +16,8 @@ import core.IMinigame3D;
 
 /**
 	Pênalti em 3D: arraste na tela para mirar, solte para chutar.
+	Swipe force = shot power. Swipe angle = curve/spin.
+	After-touch: tilt finger after release to bend the ball mid-flight.
 	Goleiro escolhe L/C/R. Defendeu = perde. Gol = +1 e nova cobrança.
 **/
 class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUpdatable implements IMinigame3D {
@@ -25,50 +26,73 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 	static var GOAL_WIDTH = 5.0;
 	static var GOAL_HEIGHT = 2.0;
 	static var BALL_START_Z = -14.0;
-	static var BALL_SPEED = 22.0;
+	static var BALL_SPEED_MIN = 14.0;
+	static var BALL_SPEED_MAX = 26.0;
+	static var GRAVITY = -6.0;
+	static var AFTERTOUCH_STRENGTH = 8.0;
 	static var KEEPER_DIVE_SPEED = 8.0;
-	static var KEEPER_ZONE_W = 1.8;
 	static var MIN_DRAG_SQ = 400.0;
+	static var BALL_SPIN_SPEED = 12.0;
+	static var BALL_RADIUS = 0.18;
+	static var BOUNCE_DAMPING = 0.6;
+	static var POST_W = 0.25;
 
-	var s3d: Scene;
-	final contentObj: h2d.Object;
-	var ctx: MinigameContext;
-	var designW: Int;
-	var designH: Int;
+	var s3d:Scene;
+	final contentObj:h2d.Object;
+	var ctx:MinigameContext;
+	var designW:Int;
+	var designH:Int;
 
-	var scoreText: Text;
-	var aimG: h2d.Graphics;
-	var interactive: Interactive;
-	var sceneObjects: Array<h3d.scene.Object>;
-	var ground: Mesh;
-	var goalLeft: Mesh;
-	var goalRight: Mesh;
-	var goalBar: Mesh;
-	var ball: Mesh;
-	var keeper: Mesh;
-	var savedCamPos: Vector;
-	var savedCamTarget: Vector;
+	var scoreText:Text;
+	var powerG:h2d.Graphics;
+	var aimG:h2d.Graphics;
+	var interactive:Interactive;
+	var sceneObjects:Array<h3d.scene.Object>;
+	var ground:Mesh;
+	var goalLeft:Mesh;
+	var goalRight:Mesh;
+	var goalBar:Mesh;
+	var ball:Mesh;
+	var keeper:Mesh;
+	var savedCamPos:Vector;
+	var savedCamTarget:Vector;
 
-	var ballX: Float;
-	var ballY: Float;
-	var ballZ: Float;
-	var ballVx: Float;
-	var ballVy: Float;
-	var ballVz: Float;
-	var keeperX: Float;
-	var keeperTargetX: Float;
-	var aimStartX: Float;
-	var aimStartY: Float;
-	var aimEndX: Float;
-	var aimEndY: Float;
-	var state: PenaltyState3D;
-	var started: Bool;
-	var score: Int;
-	var gameOver: Bool;
-	var keeperZone: Int;
+	var ballX:Float;
+	var ballY:Float;
+	var ballZ:Float;
+	var ballVx:Float;
+	var ballVy:Float;
+	var ballVz:Float;
+	var ballCurve:Float;
+	var ballSpinAngle:Float;
+	var shotPower:Float;
+	var flightTime:Float;
+	var keeperX:Float;
+	var keeperTargetX:Float;
+	var keeperDiveTimer:Float;
+	var aimStartX:Float;
+	var aimStartY:Float;
+	var aimEndX:Float;
+	var aimEndY:Float;
+	var touchCurX:Float;
+	var touchCurY:Float;
+	var afterTouchStartX:Float;
+	var afterTouchStartY:Float;
+	var afterTouchActive:Bool;
+	var touching:Bool;
+	var state:PenaltyState3D;
+	var started:Bool;
+	var score:Int;
+	var gameOver:Bool;
+	var keeperZone:Int;
+	var resultTimer:Float;
+	var shotChecked:Bool;
+	var lastGoal:Bool;
 
-	public var content(get, never): h2d.Object;
-	inline function get_content() return contentObj;
+	public var content(get, never):h2d.Object;
+
+	inline function get_content()
+		return contentObj;
 
 	public function new() {
 		designW = DESIGN_W;
@@ -86,50 +110,111 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		scoreText.scale(1.6);
 		scoreText.textAlign = Right;
 
+		powerG = new h2d.Graphics(contentObj);
 		aimG = new h2d.Graphics(contentObj);
 		interactive = new Interactive(designW, designH, contentObj);
-		interactive.onPush = function(e: Event) {
-			if (gameOver || ctx == null) return;
-			if (!started) started = true;
-			if (state != Idle3D) return;
+		interactive.onPush = function(e:Event) {
+			if (gameOver || ctx == null)
+				return;
+			if (!started)
+				started = true;
+			if (state == Flying3D) {
+				// After-touch: drag to bend the ball mid-flight
+				touching = true;
+				afterTouchActive = true;
+				afterTouchStartX = e.relX;
+				afterTouchStartY = e.relY;
+				touchCurX = e.relX;
+				touchCurY = e.relY;
+				e.propagate = false;
+				return;
+			}
+			if (state != Idle3D)
+				return;
 			aimStartX = e.relX;
 			aimStartY = e.relY;
 			aimEndX = e.relX;
 			aimEndY = e.relY;
+			touching = true;
+			touchCurX = e.relX;
+			touchCurY = e.relY;
 			state = Aiming3D;
 			e.propagate = false;
 		};
-		interactive.onMove = function(e: Event) {
-			if (state != Aiming3D) return;
-			aimEndX = e.relX;
-			aimEndY = e.relY;
-		};
-		interactive.onRelease = function(e: Event) {
-			if (state != Aiming3D) return;
-			var dx = aimEndX - aimStartX;
-			var dy = aimEndY - aimStartY;
-			if (dx * dx + dy * dy < MIN_DRAG_SQ) {
-				state = Idle3D;
-				e.propagate = false;
-				return;
+		interactive.onMove = function(e:Event) {
+			if (state == Aiming3D) {
+				aimEndX = e.relX;
+				aimEndY = e.relY;
 			}
-			launchShot();
-			e.propagate = false;
+			if (touching) {
+				touchCurX = e.relX;
+				touchCurY = e.relY;
+			}
 		};
+		interactive.onRelease = function(e:Event) {
+			if (state == Aiming3D) {
+				var dx = aimEndX - aimStartX;
+				var dy = aimEndY - aimStartY;
+				if (dx * dx + dy * dy < MIN_DRAG_SQ) {
+					state = Idle3D;
+					touching = false;
+					e.propagate = false;
+					return;
+				}
+				launchShot();
+				e.propagate = false;
+			}
+			touching = false;
+		};
+		interactive.onReleaseOutside = function(e:Event) {
+			if (state == Aiming3D) {
+				var dx = aimEndX - aimStartX;
+				var dy = aimEndY - aimStartY;
+				if (dx * dx + dy * dy >= MIN_DRAG_SQ) {
+					launchShot();
+				} else {
+					state = Idle3D;
+				}
+			}
+			touching = false;
+		};
+
+		ballX = 0;
+		ballY = 0.25;
+		ballZ = BALL_START_Z;
+		ballVx = 0;
+		ballVy = 0;
+		ballVz = 0;
+		ballCurve = 0;
+		ballSpinAngle = 0;
+		shotPower = 0;
+		flightTime = 0;
+		keeperX = 0;
+		keeperTargetX = 0;
+		keeperDiveTimer = 0;
+		touching = false;
+		state = Idle3D;
+		started = false;
+		score = 0;
+		gameOver = false;
+		keeperZone = 0;
+		resultTimer = 0;
+		lastGoal = false;
 	}
 
-	public function setScene3D(scene: Scene) {
+	public function setScene3D(scene:Scene) {
 		s3d = scene;
 	}
 
 	function setupCamera() {
-		if (s3d == null) return;
+		if (s3d == null)
+			return;
 		s3d.camera.pos.set(0, 5, -28);
 		s3d.camera.target.set(0, 1.0, -1);
 		s3d.camera.fovY = 25;
 	}
 
-	function makeCube(): h3d.prim.Polygon {
+	function makeCube():h3d.prim.Polygon {
 		var p = new Cube(1, 1, 1, true);
 		p.unindex();
 		p.addNormals();
@@ -137,7 +222,8 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 	}
 
 	function setup3D() {
-		if (s3d == null) return;
+		if (s3d == null)
+			return;
 		savedCamPos.load(s3d.camera.pos);
 		savedCamTarget.load(s3d.camera.target);
 		setupCamera();
@@ -148,9 +234,9 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		light.enableSpecular = true;
 		sceneObjects.push(light);
 		var amb = cast(s3d.lightSystem, h3d.scene.fwd.LightSystem);
-		if (amb != null) amb.ambientLight.set(0.6, 0.65, 0.6);
+		if (amb != null)
+			amb.ambientLight.set(0.6, 0.65, 0.6);
 
-		// Gramado horizontal: largo em X, fino em Y, fundo em Z
 		var floorPrim = new Cube(22, 0.3, 18, true);
 		floorPrim.unindex();
 		floorPrim.addNormals();
@@ -209,68 +295,242 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 	}
 
 	function launchShot() {
-		var targetX = (aimEndX / designW - 0.5) * (GOAL_WIDTH * 0.9);
-		var targetY = 0.3 + (1 - aimEndY / designH) * (GOAL_HEIGHT * 0.85);
-		targetX = targetX < -GOAL_WIDTH / 2 + 0.3 ? -GOAL_WIDTH / 2 + 0.3 : (targetX > GOAL_WIDTH / 2 - 0.3 ? GOAL_WIDTH / 2 - 0.3 : targetX);
-		targetY = targetY < 0.2 ? 0.2 : (targetY > GOAL_HEIGHT - 0.2 ? GOAL_HEIGHT - 0.2 : targetY);
+		// Swipe vector
+		var swDx = aimEndX - aimStartX;
+		var swDy = aimEndY - aimStartY;
+		var swipeLen = Math.sqrt(swDx * swDx + swDy * swDy);
 
+		// Power based on swipe length (longer = harder)
+		var maxSwipe = 250.0;
+		shotPower = Math.min(swipeLen / maxSwipe, 1.0);
+		var speed = BALL_SPEED_MIN + (BALL_SPEED_MAX - BALL_SPEED_MIN) * shotPower;
+
+		// Target based on where the swipe ENDS on screen — full range, no clamping
+		// Swipe to the edges or corners = aim wide (can miss!)
+		var targetX = (aimEndX / designW - 0.5) * (GOAL_WIDTH * 1.8);
+		// Swipe toward top of screen = aim high, bottom = aim low
+		var targetY = 0.2 + (1 - aimEndY / designH) * (GOAL_HEIGHT * 1.6);
+
+		ballCurve = 0;
+
+		// Keeper decision
 		keeperZone = Std.int(Math.random() * 3);
 		keeperTargetX = (keeperZone - 1) * (GOAL_WIDTH / 2.2);
+		keeperDiveTimer = 0;
 
+		// Ball initial position
 		ballX = 0;
 		ballY = 0.25;
 		ballZ = BALL_START_Z;
-		var dx = targetX - ballX;
-		var dy = targetY - ballY;
-		var dz = 0 - ballZ;
-		var len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-		if (len < 0.01) len = 0.01;
-		ballVx = (dx / len) * BALL_SPEED;
-		ballVy = (dy / len) * BALL_SPEED;
-		ballVz = (dz / len) * BALL_SPEED;
+		flightTime = 0;
+		ballSpinAngle = 0;
+		shotChecked = false;
 
-		state = Shooting3D;
+		// Calculate velocity so ball arrives at target at the goal plane (Z=0)
+		var dz = 0.0 - ballZ;
+		var travelTime = Math.abs(dz) / speed;
+		// Solve for Vy so ball reaches targetY at goal: Y = Y0 + Vy*t + 0.5*g*t^2
+		var baseVy = (targetY - ballY - 0.5 * GRAVITY * travelTime * travelTime) / travelTime;
+		// Small arc bonus (weaker shots arc more)
+		var arcBonus = (1.0 - shotPower * 0.5) * 1.2;
+
+		ballVx = (targetX - ballX) / travelTime;
+		ballVy = baseVy + arcBonus;
+		ballVz = speed;
+
+		state = Flying3D;
+	}
+
+	function clampF(v:Float, min:Float, max:Float):Float {
+		return v < min ? min : (v > max ? max : v);
+	}
+
+	function checkCollisions() {
+		var r = BALL_RADIUS;
+		var hw = POST_W / 2 + r;
+		var postH = GOAL_HEIGHT + 0.3;
+
+		// Goal post Z range (posts are at z=0.05, depth POST_W)
+		var postZMin = 0.05 - POST_W / 2 - r;
+		var postZMax = 0.05 + POST_W / 2 + r;
+
+		// Left post: center X = -GOAL_WIDTH/2 - POST_W/2, Y from 0 to postH
+		var leftPostX = -GOAL_WIDTH / 2 - POST_W / 2;
+		if (ballZ >= postZMin && ballZ <= postZMax && ballY >= -r && ballY <= postH + r) {
+			if (Math.abs(ballX - leftPostX) < hw) {
+				ballVx = Math.abs(ballVx) * BOUNCE_DAMPING;
+				ballVz = -Math.abs(ballVz) * BOUNCE_DAMPING;
+				ballX = leftPostX + hw;
+				if (ctx != null && ctx.feedback != null)
+					ctx.feedback.shake2D(0.1, 2);
+			}
+		}
+
+		// Right post: center X = GOAL_WIDTH/2 + POST_W/2
+		var rightPostX = GOAL_WIDTH / 2 + POST_W / 2;
+		if (ballZ >= postZMin && ballZ <= postZMax && ballY >= -r && ballY <= postH + r) {
+			if (Math.abs(ballX - rightPostX) < hw) {
+				ballVx = -Math.abs(ballVx) * BOUNCE_DAMPING;
+				ballVz = -Math.abs(ballVz) * BOUNCE_DAMPING;
+				ballX = rightPostX - hw;
+				if (ctx != null && ctx.feedback != null)
+					ctx.feedback.shake2D(0.1, 2);
+			}
+		}
+
+		// Crossbar: center Y = GOAL_HEIGHT + POST_W/2, spans full goal width
+		var barY = GOAL_HEIGHT + POST_W / 2;
+		var barHalfW = (GOAL_WIDTH + POST_W * 2 + 0.2) / 2 + r;
+		if (ballZ >= postZMin && ballZ <= postZMax && Math.abs(ballX) < barHalfW) {
+			if (Math.abs(ballY - barY) < hw) {
+				ballVy = -Math.abs(ballVy) * BOUNCE_DAMPING;
+				ballVz = -Math.abs(ballVz) * BOUNCE_DAMPING;
+				ballY = barY - hw;
+				if (ctx != null && ctx.feedback != null)
+					ctx.feedback.shake2D(0.1, 2);
+			}
+		}
+
+		// Keeper: position (keeperX, 0.75, 0.2), base size (1.0, 1.4, 0.5) * scale 1.1
+		var kHalfW = 0.55 + r;
+		var kHalfH = 0.77 + r;
+		var kHalfD = 0.275 + r;
+		var kCenterY = 0.75;
+		var kCenterZ = 0.2;
+		if (Math.abs(ballX - keeperX) < kHalfW && Math.abs(ballY - kCenterY) < kHalfH && Math.abs(ballZ - kCenterZ) < kHalfD) {
+			// Bounce back and sideways
+			ballVz = -Math.abs(ballVz) * BOUNCE_DAMPING;
+			ballVx += (ballX - keeperX) * 3.0;
+			ballVy = Math.abs(ballVy) * 0.3 + 2.0;
+			ballZ = kCenterZ - kHalfD;
+			if (ctx != null && ctx.feedback != null)
+				ctx.feedback.shake2D(0.15, 3);
+		}
+	}
+
+	function resetBall() {
+		afterTouchActive = false;
+		touching = false;
+		ballX = 0;
+		ballY = 0.25;
+		ballZ = BALL_START_Z;
+		ballVx = 0;
+		ballVy = 0;
+		ballVz = 0;
+		ballCurve = 0;
+		ballSpinAngle = 0;
+		flightTime = 0;
+		if (ball != null)
+			ball.setPosition(ballX, ballY, ballZ);
+		keeperX = 0;
+		keeperTargetX = 0;
+		keeperDiveTimer = 0;
+		if (keeper != null)
+			keeper.setPosition(0, 0.75, 0.2);
+		setupCamera();
 	}
 
 	function drawAim() {
 		aimG.clear();
-		if (state != Aiming3D) return;
-		aimG.lineStyle(4, 0xFFDD00, 0.9);
-		aimG.moveTo(aimStartX, aimStartY);
-		aimG.lineTo(aimEndX, aimEndY);
-		aimG.lineStyle(0);
-		aimG.beginFill(0xFFDD00, 0.6);
-		aimG.drawCircle(aimEndX, aimEndY, 10);
-		aimG.endFill();
+
+		if (state == Aiming3D) {
+			var swDx = aimEndX - aimStartX;
+			var swDy = aimEndY - aimStartY;
+			var swipeLen = Math.sqrt(swDx * swDx + swDy * swDy);
+
+			// Draw swipe line with thickness based on power
+			var thickness = 2 + (swipeLen / 300.0) * 4;
+			aimG.lineStyle(thickness, 0xFFDD00, 0.9);
+			aimG.moveTo(aimStartX, aimStartY);
+			aimG.lineTo(aimEndX, aimEndY);
+			aimG.lineStyle(0);
+
+			// Draw target reticle
+			aimG.beginFill(0xFFDD00, 0.6);
+			aimG.drawCircle(aimEndX, aimEndY, 10);
+			aimG.endFill();
+		}
+
+		// After-touch visual: show drag direction while ball is flying
+		if (state == Flying3D && touching && afterTouchActive) {
+			var adx = touchCurX - afterTouchStartX;
+			var ady = touchCurY - afterTouchStartY;
+			var adist = Math.sqrt(adx * adx + ady * ady);
+
+			// Glowing circle at touch point
+			aimG.beginFill(0x00CCFF, 0.25);
+			aimG.drawCircle(afterTouchStartX, afterTouchStartY, 35);
+			aimG.endFill();
+
+			// Direction arrow showing force
+			if (adist > 5) {
+				var clampDist = Math.min(adist, 60.0);
+				var nx = adx / adist * clampDist;
+				var ny = ady / adist * clampDist;
+				// Arrow line
+				aimG.lineStyle(3, 0x00CCFF, 0.7);
+				aimG.moveTo(afterTouchStartX, afterTouchStartY);
+				aimG.lineTo(afterTouchStartX + nx, afterTouchStartY + ny);
+				aimG.lineStyle(0);
+				// Arrow tip
+				aimG.beginFill(0x00CCFF, 0.7);
+				aimG.drawCircle(afterTouchStartX + nx, afterTouchStartY + ny, 5);
+				aimG.endFill();
+			}
+		}
 	}
 
-	public function setOnLose(c: MinigameContext) {
+	function drawPowerBar() {
+		powerG.clear();
+		if (state != Aiming3D)
+			return;
+
+		var swDx = aimEndX - aimStartX;
+		var swDy = aimEndY - aimStartY;
+		var swipeLen = Math.sqrt(swDx * swDx + swDy * swDy);
+		var power = Math.min(swipeLen / 300.0, 1.0);
+
+		// Power bar at bottom
+		var barW = 120.0;
+		var barH = 8.0;
+		var barX = designW / 2 - barW / 2;
+		var barY = designH - 40.0;
+
+		// Background
+		powerG.beginFill(0x333333, 0.6);
+		powerG.drawRect(barX, barY, barW, barH);
+		powerG.endFill();
+
+		// Fill with gradient green -> yellow -> red
+		var color = if (power < 0.5) 0x44FF44 else if (power < 0.8) 0xFFDD00 else 0xFF4444;
+		powerG.beginFill(color, 0.8);
+		powerG.drawRect(barX, barY, barW * power, barH);
+		powerG.endFill();
+	}
+
+	public function setOnLose(c:MinigameContext) {
 		ctx = c;
 	}
 
 	public function start() {
-		ballX = 0;
-		ballY = 0.25;
-		ballZ = BALL_START_Z;
-		keeperX = 0;
-		keeperTargetX = 0;
 		started = false;
 		score = 0;
 		gameOver = false;
 		state = Idle3D;
+		touching = false;
+		resultTimer = 0;
+		lastGoal = false;
 		scoreText.text = "0";
 		setup3D();
 		setupCamera();
-		if (ball != null) {
-			ball.setPosition(ballX, ballY, ballZ);
-			ball.setRotation(0, 0, 0);
-		}
-		if (keeper != null) keeper.setPosition(0, 0.75, 0.2);
+		resetBall();
 		drawAim();
+		powerG.clear();
 	}
 
 	public function dispose() {
-		for (o in sceneObjects) o.remove();
+		for (o in sceneObjects)
+			o.remove();
 		sceneObjects = [];
 		if (s3d != null && savedCamPos != null) {
 			s3d.camera.pos.load(savedCamPos);
@@ -280,65 +540,101 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		s3d = null;
 	}
 
-	public function getMinigameId(): String return "penalty-shootout-3d";
-	public function getTitle(): String return "Pênalti";
+	public function getMinigameId():String
+		return "penalty-shootout-3d";
 
-	public function update(dt: Float) {
-		if (ctx == null || gameOver) return;
+	public function getTitle():String
+		return "Pênalti";
+
+	public function update(dt:Float) {
+		if (ctx == null || gameOver)
+			return;
 		if (!started || ball == null || keeper == null) {
 			drawAim();
 			return;
 		}
 
-		if (state == Shooting3D) {
+		if (state == Flying3D) {
+			flightTime += dt;
+
+			// After-touch: drag on screen to bend the ball mid-flight
+			if (touching && afterTouchActive) {
+				var afterDx = (touchCurX - afterTouchStartX) / designW;
+				var afterDy = (touchCurY - afterTouchStartY) / designH;
+				ballVx += afterDx * AFTERTOUCH_STRENGTH * dt;
+				// Vertical after-touch (drag up = push ball up a bit)
+				ballVy -= afterDy * AFTERTOUCH_STRENGTH * 0.5 * dt;
+			}
+
+			// Gravity
+			ballVy += GRAVITY * dt;
+
+			// Move ball
 			ballX += ballVx * dt;
 			ballY += ballVy * dt;
 			ballZ += ballVz * dt;
+
+			// Don't let ball go below ground (only before goal plane)
+			if (ballZ < 0 && ballY < 0.2) {
+				ballY = 0.2;
+				ballVy = Math.abs(ballVy) * 0.3;
+			}
+
+			// Collisions with posts, crossbar, and keeper
+			checkCollisions();
+
 			ball.setPosition(ballX, ballY, ballZ);
 
-			keeperX += (keeperTargetX - keeperX) * Math.min(1, KEEPER_DIVE_SPEED * dt);
-			keeper.setPosition(keeperX, 0.75, 0.2);
+			// Keeper dives after a delay (reacts slower to powerful shots)
+			keeperDiveTimer += dt;
+			var diveDelay = 0.15 + (1 - shotPower) * 0.2;
+			if (keeperDiveTimer > diveDelay) {
+				keeperX += (keeperTargetX - keeperX) * Math.min(1, KEEPER_DIVE_SPEED * dt);
+				keeper.setPosition(keeperX, 0.75, 0.2);
+			}
 
-			if (ballZ >= -0.3) {
+			// Check goal/save once when ball crosses goal plane
+			if (!shotChecked && ballZ >= -0.3) {
+				shotChecked = true;
 				var inGoal = ballX >= -GOAL_WIDTH / 2 && ballX <= GOAL_WIDTH / 2 && ballY >= 0 && ballY <= GOAL_HEIGHT;
 				var margin = 0.55;
-				var ballInKeeperZone = inGoal && ballX >= keeperX - margin && ballX <= keeperX + margin;
-				if (ballInKeeperZone) {
+				var saved = inGoal && ballX >= keeperX - margin && ballX <= keeperX + margin;
+
+				if (saved) {
+					if (ctx != null && ctx.feedback != null)
+						ctx.feedback.shake2D(0.3, 5);
 					gameOver = true;
 					ctx.lose(score, getMinigameId());
 					ctx = null;
 					return;
 				}
+
 				if (inGoal) {
 					score++;
 					scoreText.text = Std.string(score);
+					lastGoal = true;
+					if (ctx != null && ctx.feedback != null) {
+						ctx.feedback.shake2D(0.15, 3);
+					}
+				} else {
+					lastGoal = false;
 				}
+			}
+
+			// Let ball fly into the distance, reset when far enough
+			if (ballZ > 20 || ballY < -5 || flightTime > 3.0) {
 				state = Idle3D;
-				ballX = 0;
-				ballY = 0.25;
-				ballZ = BALL_START_Z;
-				ball.setPosition(ballX, ballY, ballZ);
-				keeperX = 0;
-				keeperTargetX = 0;
-				keeper.setPosition(0, 0.75, 0.2);
-			} else if (ballZ < BALL_START_Z - 2) {
-				state = Idle3D;
-				ballX = 0;
-				ballY = 0.25;
-				ballZ = BALL_START_Z;
-				ball.setPosition(ballX, ballY, ballZ);
-				keeperX = 0;
-				keeperTargetX = 0;
-				keeper.setPosition(0, 0.75, 0.2);
+				resetBall();
 			}
 		}
 
 		drawAim();
+		drawPowerBar();
 	}
 }
 
 private enum PenaltyState3D {
 	Idle3D;
 	Aiming3D;
-	Shooting3D;
+	Flying3D;
 }
