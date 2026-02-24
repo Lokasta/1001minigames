@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-02-24
+- **Fix**: Penalty 3D camera now consistent — full goal, keeper, and ball always visible on init and restart
 - **Feature**: Pac-Man minigame - compact maze, swipe to change direction, eat dots & power pellets, 3 ghosts with chase/scared AI, tunnel wrapping, score = dots eaten + ghost bonuses
 - **Feature**: Asteroids minigame - virtual joystick controls (hold+drag to thrust/rotate, tap to shoot), asteroids split on hit (large→2 medium→2 small), ship wraps edges, drift physics
 - **UI**: DebugMenu now scrollable with drag-to-scroll and scrollbar (supports 13+ minigames)
