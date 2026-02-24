@@ -122,6 +122,13 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		s3d = scene;
 	}
 
+	function setupCamera() {
+		if (s3d == null) return;
+		s3d.camera.pos.set(0, 5, -28);
+		s3d.camera.target.set(0, 1.0, -1);
+		s3d.camera.fovY = 25;
+	}
+
 	function makeCube(): h3d.prim.Polygon {
 		var p = new Cube(1, 1, 1, true);
 		p.unindex();
@@ -133,8 +140,8 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		if (s3d == null) return;
 		savedCamPos.load(s3d.camera.pos);
 		savedCamTarget.load(s3d.camera.target);
-		s3d.camera.pos.set(0, 3.5, BALL_START_Z - 2);
-		s3d.camera.target.set(0, 1, 0);
+		setupCamera();
+
 		s3d.camera.screenRatio = designW / designH;
 
 		var light = new h3d.scene.fwd.DirLight(new Vector(0.3, 0.6, 0.4), s3d);
@@ -253,6 +260,7 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		state = Idle3D;
 		scoreText.text = "0";
 		setup3D();
+		setupCamera();
 		if (ball != null) {
 			ball.setPosition(ballX, ballY, ballZ);
 			ball.setRotation(0, 0, 0);
