@@ -25,6 +25,7 @@ class Main extends hxd.App {
 		gameFlow.registerMinigame("Pong", function() return new scenes.minigames.Pong());
 		gameFlow.registerMinigame("Space Invaders", function() return new scenes.minigames.SpaceInvaders());
 		gameFlow.registerMinigame("Asteroids", function() return new scenes.minigames.Asteroids());
+		gameFlow.registerMinigame("Pac-Man", function() return new scenes.minigames.PacMan());
 	}
 
 	override function onResize() {

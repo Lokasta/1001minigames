@@ -16,6 +16,7 @@ Ideias de minigames para o 1001 Minigames. Marcados com estrela os que mais comb
 - [x] Pong
 - [x] Space Invaders
 - [x] Asteroids
+- [x] Pac-Man
 
 ---
 
@@ -23,7 +24,7 @@ Ideias de minigames para o 1001 Minigames. Marcados com estrela os que mais comb
 - [x] Pong -- rebate a bolinha contra a IA, quem marca primeiro perde
 - [ ] Breakout -- quebre os blocos arrastando a barra
 - [ ] Tetris -- encaixe pecas, tela vertical cai perfeito
-- [ ] Pac-Man -- labirinto compacto, swipe pra mudar direcao
+- [x] Pac-Man -- labirinto compacto, swipe pra mudar direcao
 - [x] Space Invaders -- naves descendo, tap pra atirar
 - [x] Asteroids -- nave no centro, gira e atira nos asteroides
 
