@@ -121,15 +121,15 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		resultText = new Text(hxd.res.DefaultFont.get(), contentObj);
 		resultText.text = "";
 		resultText.x = designW / 2;
-		resultText.y = designH * 0.35;
-		resultText.scale(3.0);
+		resultText.y = 40;
+		resultText.scale(4.0);
 		resultText.textAlign = Center;
 		resultText.visible = false;
 
 		instructText = new Text(hxd.res.DefaultFont.get(), contentObj);
 		instructText.text = "Arraste para chutar";
 		instructText.x = designW / 2;
-		instructText.y = designH - 60;
+		instructText.y = 55;
 		instructText.scale(1.2);
 		instructText.textAlign = Center;
 		instructText.visible = false;
@@ -238,9 +238,9 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 	function setupCamera() {
 		if (s3d == null)
 			return;
-		s3d.camera.pos.set(0, 5, -20);
-		s3d.camera.target.set(0, 1.0, -1);
-		s3d.camera.fovY = 30;
+		s3d.camera.pos.set(0, 4, -26);
+		s3d.camera.target.set(0, 1.0, 0);
+		s3d.camera.fovY = 28;
 	}
 
 	function makeCube():h3d.prim.Polygon {
@@ -309,7 +309,7 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		ball = new Mesh(ballPrim, s3d);
 		ball.material.color.setColor(0xFFFFFF);
 		ball.material.shadows = false;
-		ball.setScale(0.35);
+		ball.setScale(0.45);
 		sceneObjects.push(ball);
 
 		var keeperPrim = new Cube(1.0, 1.4, 0.5, true);
@@ -577,20 +577,23 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 
 	function showResult(text:String, color:Int) {
 		resultText.text = text;
-		resultText.color = h3d.Vector4.fromColor(color);
+		resultText.textColor = color;
 		resultText.visible = true;
+		resultText.alpha = 1.0;
+		instructText.visible = false;
+		setupCamera();
 	}
 
 	function updateCameraFollow(dt:Float) {
 		if (s3d == null)
 			return;
 		camFollowT += dt;
-		var progress = clampF(camFollowT / 1.2, 0, 1);
+		var progress = clampF(camFollowT / 1.0, 0, 1);
 		var ease = progress * progress * (3 - 2 * progress);
-		var followZ = -20.0 + ease * 6.0;
-		var followY = 5.0 - ease * 1.5;
+		var followZ = -26.0 + ease * 8.0;
+		var followY = 4.0 - ease * 0.8;
 		s3d.camera.pos.set(0, followY, followZ);
-		s3d.camera.target.set(0, 1.0 + ease * 0.3, -1);
+		s3d.camera.target.set(0, 1.0 + ease * 0.3, 0);
 	}
 
 	public function update(dt:Float) {
