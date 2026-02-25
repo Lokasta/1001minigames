@@ -26,8 +26,8 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 	static var GOAL_WIDTH = 5.0;
 	static var GOAL_HEIGHT = 2.0;
 	static var BALL_START_Z = -14.0;
-	static var BALL_SPEED_MIN = 14.0;
-	static var BALL_SPEED_MAX = 26.0;
+	static var BALL_SPEED_MIN = 10.0;
+	static var BALL_SPEED_MAX = 18.0;
 	static var GRAVITY = -6.0;
 	static var AFTERTOUCH_STRENGTH = 8.0;
 	static var KEEPER_DIVE_SPEED = 8.0;
@@ -36,6 +36,9 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 	static var BALL_RADIUS = 0.18;
 	static var BOUNCE_DAMPING = 0.6;
 	static var POST_W = 0.25;
+	static var RESULT_DURATION_GOAL = 1.4;
+	static var RESULT_DURATION_SAVE = 1.6;
+	static var RESULT_DURATION_MISS = 1.0;
 
 	var s3d:Scene;
 	final contentObj:h2d.Object;
@@ -44,6 +47,8 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 	var designH:Int;
 
 	var scoreText:Text;
+	var resultText:Text;
+	var instructText:Text;
 	var powerG:h2d.Graphics;
 	var aimG:h2d.Graphics;
 	var interactive:Interactive;
@@ -86,8 +91,11 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 	var gameOver:Bool;
 	var keeperZone:Int;
 	var resultTimer:Float;
+	var resultDuration:Float;
 	var shotChecked:Bool;
 	var lastGoal:Bool;
+	var lastSaved:Bool;
+	var camFollowT:Float;
 
 	public var content(get, never):h2d.Object;
 
@@ -110,6 +118,22 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		scoreText.scale(1.6);
 		scoreText.textAlign = Right;
 
+		resultText = new Text(hxd.res.DefaultFont.get(), contentObj);
+		resultText.text = "";
+		resultText.x = designW / 2;
+		resultText.y = designH * 0.35;
+		resultText.scale(3.0);
+		resultText.textAlign = Center;
+		resultText.visible = false;
+
+		instructText = new Text(hxd.res.DefaultFont.get(), contentObj);
+		instructText.text = "Arraste para chutar";
+		instructText.x = designW / 2;
+		instructText.y = designH - 60;
+		instructText.scale(1.2);
+		instructText.textAlign = Center;
+		instructText.visible = false;
+
 		powerG = new h2d.Graphics(contentObj);
 		aimG = new h2d.Graphics(contentObj);
 		interactive = new Interactive(designW, designH, contentObj);
@@ -119,7 +143,6 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 			if (!started)
 				started = true;
 			if (state == Flying3D) {
-				// After-touch: drag to bend the ball mid-flight
 				touching = true;
 				afterTouchActive = true;
 				afterTouchStartX = e.relX;
@@ -139,6 +162,7 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 			touchCurX = e.relX;
 			touchCurY = e.relY;
 			state = Aiming3D;
+			instructText.visible = false;
 			e.propagate = false;
 		};
 		interactive.onMove = function(e:Event) {
@@ -158,6 +182,7 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 				if (dx * dx + dy * dy < MIN_DRAG_SQ) {
 					state = Idle3D;
 					touching = false;
+					instructText.visible = true;
 					e.propagate = false;
 					return;
 				}
@@ -174,6 +199,7 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 					launchShot();
 				} else {
 					state = Idle3D;
+					instructText.visible = true;
 				}
 			}
 			touching = false;
@@ -199,7 +225,10 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		gameOver = false;
 		keeperZone = 0;
 		resultTimer = 0;
+		resultDuration = 0;
 		lastGoal = false;
+		lastSaved = false;
+		camFollowT = 0;
 	}
 
 	public function setScene3D(scene:Scene) {
@@ -209,9 +238,9 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 	function setupCamera() {
 		if (s3d == null)
 			return;
-		s3d.camera.pos.set(0, 5, -28);
+		s3d.camera.pos.set(0, 5, -20);
 		s3d.camera.target.set(0, 1.0, -1);
-		s3d.camera.fovY = 25;
+		s3d.camera.fovY = 30;
 	}
 
 	function makeCube():h3d.prim.Polygon {
@@ -295,49 +324,42 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 	}
 
 	function launchShot() {
-		// Swipe vector
 		var swDx = aimEndX - aimStartX;
 		var swDy = aimEndY - aimStartY;
 		var swipeLen = Math.sqrt(swDx * swDx + swDy * swDy);
 
-		// Power based on swipe length (longer = harder)
 		var maxSwipe = 250.0;
 		shotPower = Math.min(swipeLen / maxSwipe, 1.0);
 		var speed = BALL_SPEED_MIN + (BALL_SPEED_MAX - BALL_SPEED_MIN) * shotPower;
 
-		// Target based on where the swipe ENDS on screen — full range, no clamping
-		// Swipe to the edges or corners = aim wide (can miss!)
 		var targetX = (aimEndX / designW - 0.5) * (GOAL_WIDTH * 1.8);
-		// Swipe toward top of screen = aim high, bottom = aim low
 		var targetY = 0.2 + (1 - aimEndY / designH) * (GOAL_HEIGHT * 1.6);
 
 		ballCurve = 0;
 
-		// Keeper decision
 		keeperZone = Std.int(Math.random() * 3);
 		keeperTargetX = (keeperZone - 1) * (GOAL_WIDTH / 2.2);
 		keeperDiveTimer = 0;
 
-		// Ball initial position
 		ballX = 0;
 		ballY = 0.25;
 		ballZ = BALL_START_Z;
 		flightTime = 0;
 		ballSpinAngle = 0;
 		shotChecked = false;
+		camFollowT = 0;
 
-		// Calculate velocity so ball arrives at target at the goal plane (Z=0)
 		var dz = 0.0 - ballZ;
 		var travelTime = Math.abs(dz) / speed;
-		// Solve for Vy so ball reaches targetY at goal: Y = Y0 + Vy*t + 0.5*g*t^2
 		var baseVy = (targetY - ballY - 0.5 * GRAVITY * travelTime * travelTime) / travelTime;
-		// Small arc bonus (weaker shots arc more)
 		var arcBonus = (1.0 - shotPower * 0.5) * 1.2;
 
 		ballVx = (targetX - ballX) / travelTime;
 		ballVy = baseVy + arcBonus;
 		ballVz = speed;
 
+		instructText.visible = false;
+		resultText.visible = false;
 		state = Flying3D;
 	}
 
@@ -420,6 +442,7 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		ballCurve = 0;
 		ballSpinAngle = 0;
 		flightTime = 0;
+		camFollowT = 0;
 		if (ball != null)
 			ball.setPosition(ballX, ballY, ballZ);
 		keeperX = 0;
@@ -428,6 +451,7 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		if (keeper != null)
 			keeper.setPosition(0, 0.75, 0.2);
 		setupCamera();
+		instructText.visible = true;
 	}
 
 	function drawAim() {
@@ -519,8 +543,13 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		state = Idle3D;
 		touching = false;
 		resultTimer = 0;
+		resultDuration = 0;
 		lastGoal = false;
+		lastSaved = false;
+		camFollowT = 0;
 		scoreText.text = "0";
+		resultText.visible = false;
+		instructText.visible = true;
 		setup3D();
 		setupCamera();
 		resetBall();
@@ -546,6 +575,24 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 	public function getTitle():String
 		return "Pênalti";
 
+	function showResult(text:String, color:Int) {
+		resultText.text = text;
+		resultText.color = h3d.Vector4.fromColor(color);
+		resultText.visible = true;
+	}
+
+	function updateCameraFollow(dt:Float) {
+		if (s3d == null)
+			return;
+		camFollowT += dt;
+		var progress = clampF(camFollowT / 1.2, 0, 1);
+		var ease = progress * progress * (3 - 2 * progress);
+		var followZ = -20.0 + ease * 6.0;
+		var followY = 5.0 - ease * 1.5;
+		s3d.camera.pos.set(0, followY, followZ);
+		s3d.camera.target.set(0, 1.0 + ease * 0.3, -1);
+	}
+
 	public function update(dt:Float) {
 		if (ctx == null || gameOver)
 			return;
@@ -554,38 +601,54 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 			return;
 		}
 
+		if (state == Result3D) {
+			resultTimer += dt;
+			var alpha = 1.0;
+			if (resultTimer > resultDuration - 0.3)
+				alpha = clampF((resultDuration - resultTimer) / 0.3, 0, 1);
+			resultText.alpha = alpha;
+
+			if (resultTimer >= resultDuration) {
+				resultText.visible = false;
+				if (lastSaved) {
+					gameOver = true;
+					ctx.lose(score, getMinigameId());
+					ctx = null;
+					return;
+				}
+				state = Idle3D;
+				resetBall();
+			}
+			return;
+		}
+
 		if (state == Flying3D) {
 			flightTime += dt;
 
-			// After-touch: drag on screen to bend the ball mid-flight
 			if (touching && afterTouchActive) {
 				var afterDx = (touchCurX - afterTouchStartX) / designW;
 				var afterDy = (touchCurY - afterTouchStartY) / designH;
 				ballVx += afterDx * AFTERTOUCH_STRENGTH * dt;
-				// Vertical after-touch (drag up = push ball up a bit)
 				ballVy -= afterDy * AFTERTOUCH_STRENGTH * 0.5 * dt;
 			}
 
-			// Gravity
 			ballVy += GRAVITY * dt;
 
-			// Move ball
 			ballX += ballVx * dt;
 			ballY += ballVy * dt;
 			ballZ += ballVz * dt;
 
-			// Don't let ball go below ground (only before goal plane)
 			if (ballZ < 0 && ballY < 0.2) {
 				ballY = 0.2;
 				ballVy = Math.abs(ballVy) * 0.3;
 			}
 
-			// Collisions with posts, crossbar, and keeper
 			checkCollisions();
 
 			ball.setPosition(ballX, ballY, ballZ);
 
-			// Keeper dives after a delay (reacts slower to powerful shots)
+			updateCameraFollow(dt);
+
 			keeperDiveTimer += dt;
 			var diveDelay = 0.15 + (1 - shotPower) * 0.2;
 			if (keeperDiveTimer > diveDelay) {
@@ -593,7 +656,6 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 				keeper.setPosition(keeperX, 0.75, 0.2);
 			}
 
-			// Check goal/save once when ball crosses goal plane
 			if (!shotChecked && ballZ >= -0.3) {
 				shotChecked = true;
 				var inGoal = ballX >= -GOAL_WIDTH / 2 && ballX <= GOAL_WIDTH / 2 && ballY >= 0 && ballY <= GOAL_HEIGHT;
@@ -603,9 +665,12 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 				if (saved) {
 					if (ctx != null && ctx.feedback != null)
 						ctx.feedback.shake2D(0.3, 5);
-					gameOver = true;
-					ctx.lose(score, getMinigameId());
-					ctx = null;
+					lastSaved = true;
+					lastGoal = false;
+					showResult("DEFENDEU!", 0xFF4444);
+					resultTimer = 0;
+					resultDuration = RESULT_DURATION_SAVE;
+					state = Result3D;
 					return;
 				}
 
@@ -613,18 +678,32 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 					score++;
 					scoreText.text = Std.string(score);
 					lastGoal = true;
-					if (ctx != null && ctx.feedback != null) {
+					lastSaved = false;
+					if (ctx != null && ctx.feedback != null)
 						ctx.feedback.shake2D(0.15, 3);
-					}
+					showResult("GOL!", 0x44FF44);
+					resultTimer = 0;
+					resultDuration = RESULT_DURATION_GOAL;
+					state = Result3D;
+					return;
 				} else {
 					lastGoal = false;
+					lastSaved = false;
+					showResult("FORA!", 0xFFDD00);
+					resultTimer = 0;
+					resultDuration = RESULT_DURATION_MISS;
+					state = Result3D;
+					return;
 				}
 			}
 
-			// Let ball fly into the distance, reset when far enough
 			if (ballZ > 20 || ballY < -5 || flightTime > 3.0) {
-				state = Idle3D;
-				resetBall();
+				lastGoal = false;
+				lastSaved = false;
+				showResult("FORA!", 0xFFDD00);
+				resultTimer = 0;
+				resultDuration = RESULT_DURATION_MISS;
+				state = Result3D;
 			}
 		}
 
@@ -637,4 +716,5 @@ private enum PenaltyState3D {
 	Idle3D;
 	Aiming3D;
 	Flying3D;
+	Result3D;
 }
