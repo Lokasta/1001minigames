@@ -27,7 +27,9 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 	static var DESIGN_W = 360;
 	static var DESIGN_H = 640;
 	static var GRAVITY = 380;
-	static var SPAWN_INTERVAL = 0.85;
+	static var SPAWN_INTERVAL_START = 0.9;
+	static var SPAWN_INTERVAL_MIN = 0.45;
+	static var SPAWN_RAMP_TIME = 60.0;
 	static var BOMB_CHANCE = 0.14;
 	static var MISS_LIMIT = 3;
 	static var SWIPE_STEP_PX = 6;
@@ -66,6 +68,7 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 	var items: Array<FruitItem>;
 	var swipePoints: Array<{ x: Float, y: Float, t: Float }>;
 	var splashes: Array<{ x: Float, y: Float, t: Float, color: Int }>;
+	var juiceStains: Array<{ x: Float, y: Float, color: Int, r: Float }>;
 	var pieces: Array<CutPiece>;
 	var sceneObjects: Array<h3d.scene.Object>;
 	var spawnTimer: Float;
@@ -75,9 +78,9 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 	var comboTextTimer: Float;
 	var misses: Int;
 	var gameOver: Bool;
+	var elapsed: Float;
 	var lastSwipeX: Float;
 	var lastSwipeY: Float;
-	/** Posição corrente do dedo/mouse (atualizada em todo onMove, mesmo sem addPoint). */
 	var currentSwipeX: Float;
 	var currentSwipeY: Float;
 
@@ -106,12 +109,28 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		savedCamTarget = new Vector();
 
 		bg = new Graphics(contentObj);
-		bg.beginFill(0x1a1a2e);
-		bg.drawRect(0, 0, designW, designH);
-		bg.endFill();
-		bg.beginFill(0x0f0f1a, 0.5);
-		bg.drawRect(0, 0, designW, designH);
-		bg.endFill();
+		var bgTop = 0x1a1020;
+		var bgBot = 0x0a0812;
+		var steps = 6;
+		var stepH = designH / steps;
+		for (i in 0...steps) {
+			var t = i / (steps - 1);
+			var r = Std.int(((bgTop >> 16) & 0xFF) * (1 - t) + ((bgBot >> 16) & 0xFF) * t);
+			var g = Std.int(((bgTop >> 8) & 0xFF) * (1 - t) + ((bgBot >> 8) & 0xFF) * t);
+			var b = Std.int((bgTop & 0xFF) * (1 - t) + (bgBot & 0xFF) * t);
+			bg.beginFill((r << 16) | (g << 8) | b);
+			bg.drawRect(0, i * stepH, designW, stepH + 1);
+			bg.endFill();
+		}
+		bg.lineStyle(1, 0x2a1a30, 0.2);
+		var plankH = 80.0;
+		var py = 0.0;
+		while (py < designH) {
+			bg.moveTo(0, py);
+			bg.lineTo(designW, py);
+			py += plankH;
+		}
+		bg.lineStyle(0);
 
 		fruitsG = new Graphics(contentObj);
 		slashG = new Graphics(contentObj);
@@ -141,10 +160,18 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		comboText.textColor = 0xFFDD00;
 		comboText.visible = false;
 
+		var instructText = new Text(hxd.res.DefaultFont.get(), contentObj);
+		instructText.text = "Deslize para cortar";
+		instructText.x = designW / 2;
+		instructText.y = designH / 2;
+		instructText.scale(1.3);
+		instructText.textAlign = Center;
+		instructText.textColor = 0x887799;
+
 		interactive = new Interactive(designW, designH, contentObj);
 		interactive.onPush = function(e: Event) {
 			if (gameOver || ctx == null) return;
-			if (!started) started = true;
+			if (!started) { started = true; instructText.visible = false; }
 			var now = haxe.Timer.stamp();
 			var x = clampDesign(e.relX, 0, designW);
 			var y = clampDesign(e.relY, 0, designH);
@@ -341,8 +368,11 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 	}
 
 	function addSplash(x: Float, y: Float, color: Int) {
-		for (_ in 0...8)
-			splashes.push({ x: x + (Math.random() - 0.5) * 30, y: y + (Math.random() - 0.5) * 30, t: 0.0, color: color });
+		for (_ in 0...10)
+			splashes.push({ x: x + (Math.random() - 0.5) * 40, y: y + (Math.random() - 0.5) * 40, t: 0.0, color: color });
+		for (_ in 0...3)
+			juiceStains.push({ x: x + (Math.random() - 0.5) * 50, y: y + (Math.random() - 0.5) * 50, color: color, r: 4 + Math.random() * 8 });
+		if (juiceStains.length > 40) juiceStains.splice(0, juiceStains.length - 40);
 	}
 
 	function spawnCutPieces(item: FruitItem) {
@@ -443,27 +473,48 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 	function drawFruits() {
 		if (s3d != null) return;
 		fruitsG.clear();
+		for (s in juiceStains) {
+			fruitsG.beginFill(s.color, 0.15);
+			fruitsG.drawCircle(s.x, s.y, s.r);
+			fruitsG.endFill();
+		}
 		for (item in items) {
+			var cx = item.x;
+			var cy = item.y;
+			var r = item.r;
 			if (item.isBomb) {
-				fruitsG.beginFill(0x2a2a2a);
-				fruitsG.drawCircle(item.x, item.y, item.r);
+				fruitsG.beginFill(0x1a1a1a);
+				fruitsG.drawCircle(cx, cy, r);
+				fruitsG.endFill();
+				fruitsG.beginFill(0x333333, 0.4);
+				fruitsG.drawCircle(cx - r * 0.25, cy - r * 0.25, r * 0.5);
 				fruitsG.endFill();
 				fruitsG.lineStyle(2, 0x444444);
-				fruitsG.drawCircle(item.x, item.y, item.r);
+				fruitsG.drawCircle(cx, cy, r);
 				fruitsG.lineStyle(0);
-				fruitsG.beginFill(0x666666);
-				fruitsG.drawRect(item.x - 4, item.y - item.r - 12, 8, 14);
+				fruitsG.beginFill(0x555555);
+				fruitsG.drawRect(cx - 3, cy - r - 10, 6, 12);
 				fruitsG.endFill();
-				fruitsG.beginFill(0xFF4444);
-				fruitsG.drawCircle(item.x, item.y - item.r - 14, 6);
+				var sparkT = Math.sin(haxe.Timer.stamp() * 8) * 0.5 + 0.5;
+				fruitsG.beginFill(0xFF4444, 0.5 + sparkT * 0.5);
+				fruitsG.drawCircle(cx, cy - r - 12, 4 + sparkT * 2);
+				fruitsG.endFill();
+				fruitsG.beginFill(0xFFAA00, sparkT * 0.6);
+				fruitsG.drawCircle(cx, cy - r - 14, 2);
 				fruitsG.endFill();
 			} else {
 				fruitsG.beginFill(item.color);
-				fruitsG.drawCircle(item.x, item.y, item.r);
+				fruitsG.drawCircle(cx, cy, r);
 				fruitsG.endFill();
-				fruitsG.lineStyle(2, 0xFFFFFF, 0.35);
-				fruitsG.drawCircle(item.x - item.r * 0.3, item.y - item.r * 0.3, item.r * 0.4);
-				fruitsG.lineStyle(0);
+				fruitsG.beginFill(0xFFFFFF, 0.25);
+				fruitsG.drawEllipse(cx - r * 0.3, cy - r * 0.35, r * 0.35, r * 0.25);
+				fruitsG.endFill();
+				fruitsG.beginFill(0x2D5A27);
+				fruitsG.drawRect(cx - 1, cy - r - 4, 2, 5);
+				fruitsG.endFill();
+				fruitsG.beginFill(0x3DA837);
+				fruitsG.drawEllipse(cx + 3, cy - r - 2, 5, 2.5);
+				fruitsG.endFill();
 			}
 		}
 	}
@@ -472,12 +523,17 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		slashG.clear();
 		var active = getActiveTrailPoints();
 		if (active.length < 2) return;
-		// Desenha segmentos com fade na ponta mais velha (parece um dash curto)
 		var n = active.length;
 		for (i in 0...n - 1) {
-			var t = (i + 0.5) / n; // 0 na cauda, 1 na ponta
-			var alpha = 0.25 + 0.7 * t;
-			var w = 3 + 4 * t;
+			var t = (i + 0.5) / n;
+			slashG.lineStyle(10 + 6 * t, 0x6688FF, t * 0.15);
+			slashG.moveTo(active[i].x, active[i].y);
+			slashG.lineTo(active[i + 1].x, active[i + 1].y);
+		}
+		for (i in 0...n - 1) {
+			var t = (i + 0.5) / n;
+			var alpha = 0.3 + 0.7 * t;
+			var w = 2 + 5 * t;
 			slashG.lineStyle(w, 0xFFFFFF, alpha);
 			slashG.moveTo(active[i].x, active[i].y);
 			slashG.lineTo(active[i + 1].x, active[i + 1].y);
@@ -522,9 +578,12 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		for (s in splashes) {
 			var alpha = 1 - s.t / 0.25;
 			if (alpha <= 0) continue;
-			var scale = 1 + (1 - alpha) * 1.5;
-			splashG.beginFill(s.color, alpha * 0.9);
-			splashG.drawCircle(s.x, s.y, 6 * scale);
+			var scale = 1 + (1 - alpha) * 2.0;
+			splashG.beginFill(s.color, alpha * 0.85);
+			splashG.drawCircle(s.x, s.y, 7 * scale);
+			splashG.endFill();
+			splashG.beginFill(0xFFFFFF, alpha * 0.2);
+			splashG.drawCircle(s.x - 1, s.y - 1, 3 * scale);
 			splashG.endFill();
 		}
 	}
@@ -563,6 +622,7 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 	public function start() {
 		items = [];
 		splashes = [];
+		juiceStains = [];
 		pieces = [];
 		swipePoints = null;
 		sceneObjects = [];
@@ -573,6 +633,7 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		comboTextTimer = 0;
 		misses = 0;
 		gameOver = false;
+		elapsed = 0;
 		scoreText.text = "0";
 		livesText.text = "♥♥♥";
 		comboText.visible = false;
@@ -683,9 +744,11 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 			if (comboTextTimer <= 0) comboText.visible = false;
 		}
 
+		elapsed += dt;
 		spawnTimer -= dt;
 		if (spawnTimer <= 0) {
-			spawnTimer = SPAWN_INTERVAL;
+			var rampT = if (elapsed > SPAWN_RAMP_TIME) 1.0 else elapsed / SPAWN_RAMP_TIME;
+			spawnTimer = SPAWN_INTERVAL_START + (SPAWN_INTERVAL_MIN - SPAWN_INTERVAL_START) * rampT;
 			spawnItem();
 		}
 
