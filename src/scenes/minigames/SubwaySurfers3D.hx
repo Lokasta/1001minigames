@@ -28,8 +28,8 @@ class SubwaySurfers3D implements IMinigameSceneWithLose implements IMinigameUpda
 	static var SPEED_RAMP = 50.0;
 	static var SPAWN_INTERVAL_START = 1.3;
 	static var SPAWN_INTERVAL_MIN = 0.6;
-	static var JUMP_V0 = 9.0;
-	static var GRAVITY = 26.0;
+	static var JUMP_V0 = 10.0;
+	static var GRAVITY = 24.0;
 	static var ROLL_DURATION = 0.55;
 	static var SWIPE_THRESHOLD = 35;
 	static var FAST_FALL_VY = -22.0;
@@ -326,15 +326,15 @@ class SubwaySurfers3D implements IMinigameSceneWithLose implements IMinigameUpda
 		var pY = PLAYER_BASE_Y + playerY;
 		for (o in obstacles) {
 			var relZ = o.z - PLAYER_Z;
-			if (relZ > 1.0 || relZ < -1.0)
+			if (relZ > 0.8 || relZ < -0.8)
 				continue;
 			if (o.lane != playerLane)
 				continue;
 			if (o.high) {
-				if (pY < 1.2)
+				if (pY < 0.8)
 					return true;
 			} else {
-				if (!rolling && pY < 0.35)
+				if (!rolling && pY < 0.4)
 					return true;
 			}
 		}
