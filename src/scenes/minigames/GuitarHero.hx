@@ -20,13 +20,13 @@ class GuitarHero implements IMinigameSceneWithLose implements IMinigameUpdatable
 	static var DESIGN_H = 640;
 	static var LANE_COUNT = 4;
 	static var LANE_W = 90;
-	static var NOTE_SPEED = 280;
+	static var NOTE_SPEED = 240;
 	static var NOTE_H = 24;
 	static var HIT_Y = 520;
-	static var PERFECT_RANGE = 18.0;
-	static var GOOD_RANGE = 40.0;
-	static var MISS_RANGE = 60.0;
-	static var MAX_HEALTH = 16;
+	static var PERFECT_RANGE = 25.0;
+	static var GOOD_RANGE = 55.0;
+	static var MISS_RANGE = 80.0;
+	static var MAX_HEALTH = 30;
 	static var HIT_FLASH_DURATION = 0.15;
 	static var FEEDBACK_DURATION = 0.4;
 	static var LANE_COLORS:Array<Int> = [0xE74C3C, 0x3498DB, 0x2ECC71, 0xF1C40F];
@@ -174,6 +174,7 @@ class GuitarHero implements IMinigameSceneWithLose implements IMinigameUpdatable
 			if (bestDist <= PERFECT_RANGE) {
 				score += 3 * comboMultiplier();
 				combo++;
+				if (health < MAX_HEALTH) health++;
 				showFeedback("PERFECT", 0x00FFAA);
 			} else if (bestDist <= GOOD_RANGE) {
 				score += 2 * comboMultiplier();
