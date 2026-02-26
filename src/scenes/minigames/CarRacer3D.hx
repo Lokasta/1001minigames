@@ -267,6 +267,13 @@ class CarRacer3D implements IMinigameSceneWithLose implements IMinigameUpdatable
 			return;
 
 		var lane = Std.int(Math.random() * LANE_COUNT);
+		if (score == 0 && obstacles.length == 0) {
+			var playerLane = Std.int((carX + ROAD_HALF_W) / (ROAD_HALF_W * 2 / LANE_COUNT));
+			if (playerLane < 0) playerLane = 0;
+			if (playerLane >= LANE_COUNT) playerLane = LANE_COUNT - 1;
+			while (lane == playerLane)
+				lane = Std.int(Math.random() * LANE_COUNT);
+		}
 		var laneW = ROAD_HALF_W * 2 / LANE_COUNT;
 		var x = -ROAD_HALF_W + laneW / 2 + lane * laneW;
 		x += (Math.random() - 0.5) * (laneW * 0.3);
@@ -310,18 +317,9 @@ class CarRacer3D implements IMinigameSceneWithLose implements IMinigameUpdatable
 		if (explosionT <= 0 || explosionT >= EXPLOSION_DURATION)
 			return;
 		var t = explosionT / EXPLOSION_DURATION;
-		var cx = designW / 2;
-		var cy = designH * 0.7;
-		var r = 30 + t * 80;
 		var alpha = 1 - t * t;
-		explosionG.beginFill(0xFF6600, alpha * 0.9);
-		explosionG.drawCircle(cx, cy, r);
-		explosionG.endFill();
-		explosionG.beginFill(0xFFCC00, alpha * 0.6);
-		explosionG.drawCircle(cx, cy, r * 0.5);
-		explosionG.endFill();
-		explosionG.beginFill(0xFFFFFF, alpha * 0.3);
-		explosionG.drawCircle(cx, cy, r * 0.2);
+		explosionG.beginFill(0xFF6600, alpha * 0.7);
+		explosionG.drawRect(0, 0, designW, designH);
 		explosionG.endFill();
 	}
 
@@ -439,8 +437,8 @@ class CarRacer3D implements IMinigameSceneWithLose implements IMinigameUpdatable
 			exploding = true;
 			explosionT = 0;
 			if (ctx.feedback != null) {
-				ctx.feedback.shake3D(0.5, 0.3, 14);
-				ctx.feedback.flash(0xFF6600, 0.2);
+				ctx.feedback.shake3D(0.4, 0.4, 16);
+				ctx.feedback.flash(0xFFFFFF, 0.12);
 			}
 			return;
 		}
