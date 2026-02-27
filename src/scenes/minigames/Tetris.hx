@@ -144,29 +144,37 @@ class Tetris implements IMinigameSceneWithLose implements IMinigameUpdatable {
 
 		// Background
 		bg = new Graphics(contentObj);
-		bg.beginFill(0x0A0A1A);
-		bg.drawRect(0, 0, DESIGN_W, DESIGN_H);
-		bg.endFill();
+		var bgTop = 0x08081a;
+		var bgBot = 0x0c0c28;
+		var bSteps = 5;
+		var bStepH = DESIGN_H / bSteps;
+		for (i in 0...bSteps) {
+			var t = i / (bSteps - 1);
+			var r = Std.int(((bgTop >> 16) & 0xFF) * (1 - t) + ((bgBot >> 16) & 0xFF) * t);
+			var g = Std.int(((bgTop >> 8) & 0xFF) * (1 - t) + ((bgBot >> 8) & 0xFF) * t);
+			var b = Std.int((bgTop & 0xFF) * (1 - t) + (bgBot & 0xFF) * t);
+			bg.beginFill((r << 16) | (g << 8) | b);
+			bg.drawRect(0, i * bStepH, DESIGN_W, bStepH + 1);
+			bg.endFill();
+		}
 
-		// Board border
-		bg.lineStyle(2, 0x333366);
-		bg.drawRect(BOARD_X - 2, BOARD_Y - 2, COLS * TILE + 4, ROWS * TILE + 4);
-		bg.lineStyle();
-
-		// Grid lines (subtle)
-		bg.beginFill(0x111133);
+		// Board area
+		bg.beginFill(0x0a0a22);
 		bg.drawRect(BOARD_X, BOARD_Y, COLS * TILE, ROWS * TILE);
 		bg.endFill();
 		for (c in 0...COLS + 1) {
-			bg.beginFill(0x1A1A3A);
+			bg.beginFill(0x14143a, 0.5);
 			bg.drawRect(BOARD_X + c * TILE, BOARD_Y, 1, ROWS * TILE);
 			bg.endFill();
 		}
-		for (r in 0...ROWS + 1) {
-			bg.beginFill(0x1A1A3A);
-			bg.drawRect(BOARD_X, BOARD_Y + r * TILE, COLS * TILE, 1);
+		for (r2 in 0...ROWS + 1) {
+			bg.beginFill(0x14143a, 0.5);
+			bg.drawRect(BOARD_X, BOARD_Y + r2 * TILE, COLS * TILE, 1);
 			bg.endFill();
 		}
+		bg.lineStyle(2, 0x3344AA, 0.6);
+		bg.drawRect(BOARD_X - 2, BOARD_Y - 2, COLS * TILE + 4, ROWS * TILE + 4);
+		bg.lineStyle();
 
 		// Ghost piece layer (drawn behind current piece)
 		ghostG = new Graphics(contentObj);
@@ -177,37 +185,33 @@ class Tetris implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		// Next piece preview
 		nextG = new Graphics(contentObj);
 
-		// Score
 		scoreText = new Text(hxd.res.DefaultFont.get(), contentObj);
 		scoreText.text = "0";
-		scoreText.x = DESIGN_W / 2 - 20;
+		scoreText.x = 14;
 		scoreText.y = 15;
-		scoreText.scale(2.0);
+		scoreText.scale(1.8);
 		scoreText.textColor = 0xFFFFFF;
 
-		// Lines label
 		linesText = new Text(hxd.res.DefaultFont.get(), contentObj);
-		linesText.text = "Lines: 0";
-		linesText.x = DESIGN_W / 2 - 30;
+		linesText.text = "Linhas: 0";
+		linesText.x = 14;
 		linesText.y = 50;
-		linesText.scale(1.2);
-		linesText.textColor = 0xAAAACC;
+		linesText.scale(1.0);
+		linesText.textColor = 0x8888CC;
 
-		// Next label
 		var nextLabel = new Text(hxd.res.DefaultFont.get(), contentObj);
 		nextLabel.text = "NEXT";
 		nextLabel.x = BOARD_X + COLS * TILE + 12;
 		nextLabel.y = BOARD_Y + 5;
 		nextLabel.scale(1.0);
-		nextLabel.textColor = 0x8888AA;
+		nextLabel.textColor = 0x6666AA;
 
-		// Instruction text
 		instructText = new Text(hxd.res.DefaultFont.get(), contentObj);
-		instructText.text = "Swipe: move  Tap: rotate  Down: drop";
+		instructText.text = "Arraste: mover | Toque: girar";
 		instructText.x = DESIGN_W / 2;
-		instructText.y = BOARD_Y + ROWS * TILE + 15;
-		instructText.scale(0.9);
-		instructText.textColor = 0x666688;
+		instructText.y = BOARD_Y + ROWS * TILE + 12;
+		instructText.scale(0.85);
+		instructText.textColor = 0x555577;
 		instructText.textAlign = Center;
 
 		// Interactive
@@ -334,12 +338,11 @@ class Tetris implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		curY = -1;
 
 		if (!fits(curType, curRot, curX, curY)) {
-			// Game over
 			gameOver = true;
-			if (ctx != null) {
-				ctx.feedback.flash(0xFF0000, 0.3);
+			lockTimer = 0;
+			if (ctx != null && ctx.feedback != null) {
+				ctx.feedback.flash(0xFF0000, 0.2);
 				ctx.feedback.shake2D(0.3, 6);
-				ctx.lose(score, getMinigameId());
 			}
 		}
 		locking = false;
@@ -465,7 +468,7 @@ class Tetris implements IMinigameSceneWithLose implements IMinigameUpdatable {
 			};
 			score += pts;
 			scoreText.text = Std.string(score);
-			linesText.text = "Lines: " + Std.string(lines);
+			linesText.text = "Linhas: " + Std.string(lines);
 
 			if (ctx != null) {
 				ctx.feedback.flash(0xFFFFFF, 0.1);
@@ -487,7 +490,17 @@ class Tetris implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	}
 
 	public function update(dt:Float) {
-		if (!started || gameOver) return;
+		if (gameOver) {
+			if (lockTimer >= 0) {
+				lockTimer += dt;
+				if (lockTimer >= 0.5 && ctx != null) {
+					ctx.lose(score, getMinigameId());
+					ctx = null;
+				}
+			}
+			return;
+		}
+		if (!started) return;
 
 		totalTime += dt;
 
@@ -564,20 +577,22 @@ class Tetris implements IMinigameSceneWithLose implements IMinigameUpdatable {
 			}
 		}
 
-		// Draw next piece preview
 		nextG.clear();
 		var nShape = getShape(nextType, 0);
 		var nSize = nShape.length;
 		var previewTile = 14;
 		var previewX = BOARD_X + COLS * TILE + 12;
 		var previewY = BOARD_Y + 25;
+		nextG.lineStyle(1, 0x333366, 0.4);
+		nextG.drawRect(previewX - 2, previewY - 2, nSize * previewTile + 4, nSize * previewTile + 4);
+		nextG.lineStyle();
 		for (r in 0...nSize) {
 			for (c in 0...nSize) {
 				if (nShape[r][c] == 0) continue;
 				var px = previewX + c * previewTile;
 				var py = previewY + r * previewTile;
 				nextG.beginFill(COLORS[nextType]);
-				nextG.drawRect(px + 1, py + 1, previewTile - 2, previewTile - 2);
+				nextG.drawRoundedRect(px + 1, py + 1, previewTile - 2, previewTile - 2, 2);
 				nextG.endFill();
 			}
 		}
@@ -588,26 +603,21 @@ class Tetris implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	function drawTile(g:Graphics, col:Int, row:Int, color:Int, alpha:Float) {
 		var px = BOARD_X + col * TILE;
 		var py = BOARD_Y + row * TILE;
-		var inset = 1;
 
-		// Main fill
 		g.beginFill(color, alpha);
-		g.drawRect(px + inset, py + inset, TILE - inset * 2, TILE - inset * 2);
+		g.drawRoundedRect(px + 1, py + 1, TILE - 2, TILE - 2, 3);
 		g.endFill();
 
 		if (alpha >= 0.9) {
-			// Highlight (top-left edge)
-			var hi = brighten(color, 60);
-			g.beginFill(hi, 0.5);
-			g.drawRect(px + inset, py + inset, TILE - inset * 2, 2);
-			g.drawRect(px + inset, py + inset, 2, TILE - inset * 2);
+			var hi = brighten(color, 50);
+			g.beginFill(hi, 0.45);
+			g.drawRoundedRect(px + 2, py + 2, TILE - 4, Std.int(TILE / 2) - 2, 2);
 			g.endFill();
 
-			// Shadow (bottom-right edge)
-			var sh = darken(color, 80);
-			g.beginFill(sh, 0.5);
-			g.drawRect(px + inset, py + TILE - inset - 2, TILE - inset * 2, 2);
-			g.drawRect(px + TILE - inset - 2, py + inset, 2, TILE - inset * 2);
+			var sh = darken(color, 60);
+			g.beginFill(sh, 0.35);
+			g.drawRect(px + 2, py + TILE - 4, TILE - 4, 2);
+			g.drawRect(px + TILE - 4, py + 2, 2, TILE - 4);
 			g.endFill();
 		}
 	}
