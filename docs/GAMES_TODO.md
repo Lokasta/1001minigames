@@ -22,6 +22,7 @@ Ideias de minigames para o 1001 Minigames. Marcados com estrela os que mais comb
 - [x] Knife Hit
 - [x] Stack
 - [x] Timing Ball
+- [x] Red Light Green Light
 
 ---
 
@@ -38,7 +39,7 @@ Ideias de minigames para o 1001 Minigames. Marcados com estrela os que mais comb
 - [x] Knife Hit -- jogue facas num tronco girando sem acertar as outras ⭐
 - [x] Stack -- blocos deslizando, toque pra empilhar perfeitamente ⭐
 - [x] Timing Ball -- bola quicando, toque no momento exato pra passar pelo obstaculo
-- [ ] Red Light Green Light -- segura pra correr, solta no red light (Round 6 vibes) ⭐
+- [x] Red Light Green Light -- segura pra correr, solta no red light (Round 6 vibes) ⭐
 - [ ] Duelo de Pistola -- espera o sinal, toca primeiro que o oponente
 
 ## Puzzle Rapido

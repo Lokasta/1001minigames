@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-02-27
+- **Feature**: Red Light Green Light minigame - Round 6 style, hold to run forward, release on red light, doll turns around on red (menacing eyes), traffic light (green/yellow/red), rival NPCs running alongside, reach finish line for bonus + new round with harder timing, speed increases each round
 - **Feature**: Timing Ball minigame - bouncing ball with gravity, tap to bounce upward, red obstacle bars scroll down with gaps to pass through, gap shrinks over time (80→50px), speed ramp (100→220 px/s), squash/stretch ball animation, trail particles, floor shadow
 - **Feature**: Stack minigame - sliding blocks, tap to stack perfectly, cut piece falls off with gravity, perfect placement streak bonus (width grows back), 8-color cycling palette, camera scrolls up as stack grows, speed ramp 120→320 px/s over 40 blocks
 - **Feature**: Knife Hit minigame - rotating wooden board with humanoid target (circus style), tap to throw knives, avoid hitting the person or other stuck knives, rotation speed ramp + direction changes, knife blade/handle rendering
