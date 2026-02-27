@@ -62,6 +62,18 @@ class KnifeHit implements IMinigameSceneWithLose implements IMinigameUpdatable {
 
 	// Hit feedback
 	var hitFlashTimer:Float;
+	var boardPulseScale:Float;
+
+	// Success particles (x, y, vx, vy, life)
+	var particles:Array<{x:Float, y:Float, vx:Float, vy:Float, life:Float}>;
+	static var PARTICLE_COUNT = 12;
+
+	// Instruction fade after first throw
+	var instructAlpha:Float;
+	static var INSTRUCT_FADE_SPEED = 1.2;
+
+	// Next-knife idle pulse
+	var nextKnifePulseT:Float;
 
 	var rng:hxd.Rand;
 
@@ -75,14 +87,7 @@ class KnifeHit implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		contentObj.visible = false;
 
 		bg = new Graphics(contentObj);
-		// Dark gradient-ish bg
-		bg.beginFill(0x1A0A1E);
-		bg.drawRect(0, 0, DESIGN_W, DESIGN_H);
-		bg.endFill();
-		// Spotlight effect
-		bg.beginFill(0x2A1A2E, 0.5);
-		bg.drawCircle(BOARD_CX, BOARD_CY, 160);
-		bg.endFill();
+		particles = [];
 
 		boardG = new Graphics(contentObj);
 		humanoidG = new Graphics(contentObj);
@@ -129,6 +134,9 @@ class KnifeHit implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		knifeFlying = false;
 		knifeY = KNIFE_START_Y;
 		hitFlashTimer = 0;
+		boardPulseScale = 0;
+		instructAlpha = 1.0;
+		nextKnifePulseT = 0;
 	}
 
 	public function getMinigameId():String
@@ -155,9 +163,15 @@ class KnifeHit implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		knifeFlying = false;
 		knifeY = KNIFE_START_Y;
 		hitFlashTimer = 0;
+		boardPulseScale = 0;
+		particles = [];
+		instructAlpha = 1.0;
+		nextKnifePulseT = 0;
 		rng = new hxd.Rand(Std.int(haxe.Timer.stamp() * 1000) & 0x7FFFFFFF);
 		humanoidAngle = Math.PI * 0.5; // starts at top
 		scoreText.text = "0";
+		instructText.visible = true;
+		instructText.alpha = 1.0;
 	}
 
 	public function update(dt:Float) {
@@ -186,8 +200,9 @@ class KnifeHit implements IMinigameSceneWithLose implements IMinigameUpdatable {
 			// Check if knife reached the board
 			if (knifeY <= BOARD_CY + KNIFE_STICK_DIST) {
 				knifeFlying = false;
-				// Calculate the angle where knife hits (coming from below = angle PI/2 in world, convert to board-local)
-				var hitWorldAngle = Math.PI / 2; // knife comes from below, hits at bottom of board
+				// Knife comes from below (Y decreases): it hits the BOTTOM of the board.
+				// In our coords: angle 0 = right, -PI/2 = bottom (tipY = BOARD_CY + R), +PI/2 = top.
+				var hitWorldAngle = -Math.PI / 2;
 				var hitBoardAngle = normalizeAngle(hitWorldAngle - boardAngle);
 
 				// Check collision with humanoid
@@ -211,12 +226,33 @@ class KnifeHit implements IMinigameSceneWithLose implements IMinigameUpdatable {
 				stuckKnives.push(hitBoardAngle);
 				score++;
 				scoreText.text = Std.string(score);
-				hitFlashTimer = 0.1;
+				hitFlashTimer = 0.12;
+				boardPulseScale = 1.0;
+				spawnSuccessParticles(BOARD_CX, BOARD_CY + KNIFE_STICK_DIST);
 				if (ctx != null) ctx.feedback.flash(0xFFFFFF, 0.05);
 			}
 		}
 
 		if (hitFlashTimer > 0) hitFlashTimer -= dt;
+		if (boardPulseScale > 0) boardPulseScale -= dt * 8; else boardPulseScale = 0;
+		// Fade instruction after first throw
+		if (score > 0 && instructAlpha > 0) {
+			instructAlpha -= dt * INSTRUCT_FADE_SPEED;
+			if (instructAlpha < 0) instructAlpha = 0;
+		}
+		nextKnifePulseT += dt;
+		// Update particles
+		var i = 0;
+		while (i < particles.length) {
+			var p = particles[i];
+			p.x += p.vx * dt;
+			p.y += p.vy * dt;
+			p.life -= dt;
+			if (p.life <= 0)
+				particles.splice(i, 1);
+			else
+				i++;
+		}
 
 		draw();
 	}
@@ -252,32 +288,90 @@ class KnifeHit implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		return d;
 	}
 
+	function spawnSuccessParticles(cx:Float, cy:Float) {
+		for (_ in 0...PARTICLE_COUNT) {
+			var angle = rng.rand() * Math.PI * 2;
+			var speed = 30 + rng.rand() * 80;
+			particles.push({
+				x: cx,
+				y: cy,
+				vx: Math.cos(angle) * speed,
+				vy: -Math.sin(angle) * speed - 20,
+				life: 0.25 + rng.rand() * 0.2
+			});
+		}
+	}
+
 	function draw() {
+		bg.clear();
 		boardG.clear();
 		knivesG.clear();
 		humanoidG.clear();
 		nextKnifeG.clear();
 
-		// Draw board (wooden circle)
-		// Outer ring
-		boardG.beginFill(0x8B5E3C);
-		boardG.drawCircle(BOARD_CX, BOARD_CY, BOARD_RADIUS);
+		// --- Background: gradient + vignette + spotlight ---
+		bg.beginFill(0x0D0612);
+		bg.drawRect(0, 0, DESIGN_W, DESIGN_H);
+		bg.endFill();
+		bg.beginFill(0x1A0F22);
+		bg.drawRect(0, 0, DESIGN_W, DESIGN_H);
+		bg.endFill();
+		// Radial spotlight behind board
+		bg.beginFill(0x2D1B35, 0.85);
+		bg.drawCircle(BOARD_CX, BOARD_CY, 180);
+		bg.endFill();
+		bg.beginFill(0x3A2540, 0.5);
+		bg.drawCircle(BOARD_CX, BOARD_CY, 140);
+		bg.endFill();
+		// Vignette (darker edges)
+		bg.beginFill(0x000000, 0.35);
+		bg.drawRect(0, 0, DESIGN_W, 80);
+		bg.drawRect(0, DESIGN_H - 80, DESIGN_W, 80);
+		bg.drawRect(0, 0, 50, DESIGN_H);
+		bg.drawRect(DESIGN_W - 50, 0, 50, DESIGN_H);
+		bg.endFill();
+
+		var pulse = boardPulseScale > 0 ? 1.0 + boardPulseScale * 0.04 : 1.0;
+		var R = BOARD_RADIUS * pulse;
+
+		// Board drop shadow (circle below, soft)
+		boardG.beginFill(0x000000, 0.35);
+		boardG.drawCircle(BOARD_CX, BOARD_CY + 14, R * 0.95);
 		boardG.endFill();
-		// Inner ring
-		boardG.beginFill(0xA0703C);
-		boardG.drawCircle(BOARD_CX, BOARD_CY, BOARD_RADIUS - 6);
+
+		// Draw board (wooden circle) with bevel
+		boardG.beginFill(0x6B4E2C);
+		boardG.drawCircle(BOARD_CX, BOARD_CY, R);
+		boardG.endFill();
+		boardG.beginFill(0x8B5E3C);
+		boardG.drawCircle(BOARD_CX, BOARD_CY, R - 4);
+		boardG.endFill();
+		boardG.beginFill(0xA07848);
+		boardG.drawCircle(BOARD_CX, BOARD_CY, R - 8);
 		boardG.endFill();
 		// Wood grain rings
-		boardG.beginFill(0x8B5E3C, 0.3);
-		boardG.drawCircle(BOARD_CX, BOARD_CY, BOARD_RADIUS - 20);
+		boardG.beginFill(0x8B5E3C, 0.4);
+		boardG.drawCircle(BOARD_CX, BOARD_CY, R - 22);
 		boardG.endFill();
-		boardG.beginFill(0x7A4E2C, 0.2);
-		boardG.drawCircle(BOARD_CX, BOARD_CY, BOARD_RADIUS - 40);
+		boardG.beginFill(0x7A4E2C, 0.35);
+		boardG.drawCircle(BOARD_CX, BOARD_CY, R - 44);
 		boardG.endFill();
-		// Center dot
-		boardG.beginFill(0x6A3E1C);
-		boardG.drawCircle(BOARD_CX, BOARD_CY, 5);
+		// Center dot + highlight
+		boardG.beginFill(0x5A3518);
+		boardG.drawCircle(BOARD_CX, BOARD_CY, 6);
 		boardG.endFill();
+		boardG.beginFill(0x8B5E3C);
+		boardG.drawCircle(BOARD_CX, BOARD_CY, 4);
+		boardG.endFill();
+
+		// Success particles
+		for (p in particles) {
+			var alpha = p.life * 4;
+			if (alpha > 1) alpha = 1;
+			boardG.beginFill(0xFFFFAA, alpha);
+			boardG.drawCircle(p.x, p.y, 2.5);
+			boardG.endFill();
+		}
 
 		// Draw humanoid on the board edge
 		var hAngle = humanoidAngle + boardAngle;
@@ -286,27 +380,39 @@ class KnifeHit implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		var hy = BOARD_CY - Math.sin(hAngle) * hDist;
 		drawHumanoid(humanoidG, hx, hy, hAngle);
 
-		// Draw stuck knives
+		// Draw stuck knives (shadow first, then blade)
 		for (ka in stuckKnives) {
 			var worldAngle = ka + boardAngle;
-			// Knife tip at board edge, handle pointing outward
 			var tipX = BOARD_CX + Math.cos(worldAngle) * KNIFE_STICK_DIST;
 			var tipY = BOARD_CY - Math.sin(worldAngle) * KNIFE_STICK_DIST;
 			var handleX = BOARD_CX + Math.cos(worldAngle) * (KNIFE_STICK_DIST + KNIFE_LENGTH);
 			var handleY = BOARD_CY - Math.sin(worldAngle) * (KNIFE_STICK_DIST + KNIFE_LENGTH);
+			drawKnifeShadow(knivesG, tipX, tipY, handleX, handleY);
 			drawKnife(knivesG, tipX, tipY, handleX, handleY);
 		}
 
 		// Draw flying knife
 		if (knifeFlying) {
+			// Slight trail
+			nextKnifeG.beginFill(0xAAAABB, 0.25);
+			nextKnifeG.drawCircle(BOARD_CX, knifeY + 15, 8);
+			nextKnifeG.endFill();
 			drawKnife(nextKnifeG, BOARD_CX, knifeY - KNIFE_LENGTH / 2, BOARD_CX, knifeY + KNIFE_LENGTH / 2);
 		} else if (!gameOver) {
-			// Next knife waiting at bottom
-			drawKnife(nextKnifeG, BOARD_CX, KNIFE_START_Y - KNIFE_LENGTH / 2, BOARD_CX, KNIFE_START_Y + KNIFE_LENGTH / 2);
+			// Next knife waiting at bottom with idle pulse
+			var pulseY = Math.sin(nextKnifePulseT * 4) * 3;
+			var sy = KNIFE_START_Y + pulseY;
+			drawKnife(nextKnifeG, BOARD_CX, sy - KNIFE_LENGTH / 2, BOARD_CX, sy + KNIFE_LENGTH / 2);
 		}
+		instructText.alpha = instructAlpha;
 	}
 
-	function drawKnife(g:Graphics, tipX:Float, tipY:Float, handleX:Float, handleY:Float) {
+	function drawKnifeShadow(g:Graphics, tipX:Float, tipY:Float, handleX:Float, handleY:Float) {
+		var off = 4;
+		drawKnife(g, tipX + off, tipY + off, handleX + off, handleY + off, true);
+	}
+
+	function drawKnife(g:Graphics, tipX:Float, tipY:Float, handleX:Float, handleY:Float, ?shadow:Bool = false) {
 		var dx = handleX - tipX;
 		var dy = handleY - tipY;
 		var len = Math.sqrt(dx * dx + dy * dy);
@@ -317,29 +423,41 @@ class KnifeHit implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		// Blade (narrow triangle from tip to mid)
 		var midX = tipX + dx * 0.5;
 		var midY = tipY + dy * 0.5;
-		var bladeW = 3.0;
-		g.beginFill(0xCCCCDD);
+		var bladeW = shadow ? 4.0 : 3.0;
+		if (shadow) {
+			g.beginFill(0x0A0A12, 0.5);
+			g.moveTo(tipX, tipY);
+			g.lineTo(midX + nx * bladeW, midY + ny * bladeW);
+			g.lineTo(midX - nx * bladeW, midY - ny * bladeW);
+			g.endFill();
+			g.beginFill(0x1A1A28, 0.4);
+			g.moveTo(midX + nx * bladeW, midY + ny * bladeW);
+			g.lineTo(handleX + nx * (bladeW + 1), handleY + ny * (bladeW + 1));
+			g.lineTo(handleX - nx * (bladeW + 1), handleY - ny * (bladeW + 1));
+			g.lineTo(midX - nx * bladeW, midY - ny * bladeW);
+			g.endFill();
+			return;
+		}
+		g.beginFill(0xB8B8CC);
 		g.moveTo(tipX, tipY);
 		g.lineTo(midX + nx * bladeW, midY + ny * bladeW);
 		g.lineTo(midX - nx * bladeW, midY - ny * bladeW);
 		g.endFill();
-		// Blade highlight
-		g.beginFill(0xEEEEFF, 0.5);
+		g.beginFill(0xE8E8FF, 0.6);
 		g.moveTo(tipX, tipY);
-		g.lineTo(midX + nx * 1, midY + ny * 1);
+		g.lineTo(midX + nx * 1.2, midY + ny * 1.2);
 		g.lineTo(midX - nx * bladeW, midY - ny * bladeW);
 		g.endFill();
 
 		// Handle (rectangle from mid to handle end)
 		var handleW = 4.0;
-		g.beginFill(0x5A3520);
+		g.beginFill(0x4A2A18);
 		g.moveTo(midX + nx * handleW, midY + ny * handleW);
 		g.lineTo(handleX + nx * handleW, handleY + ny * handleW);
 		g.lineTo(handleX - nx * handleW, handleY - ny * handleW);
 		g.lineTo(midX - nx * handleW, midY - ny * handleW);
 		g.endFill();
-		// Handle accent
-		g.beginFill(0x7A4E2C);
+		g.beginFill(0x6A4A28);
 		var guardX = midX + dx * 0.05;
 		var guardY = midY + dy * 0.05;
 		g.moveTo(guardX + nx * 5, guardY + ny * 5);
@@ -351,15 +469,27 @@ class KnifeHit implements IMinigameSceneWithLose implements IMinigameUpdatable {
 
 	function drawHumanoid(g:Graphics, cx:Float, cy:Float, angle:Float) {
 		// Simplified humanoid figure facing outward from board center
-		// Angle determines rotation of the figure
 		var cosA = Math.cos(angle);
-		var sinA = -Math.sin(angle); // negate because Y is down
+		var sinA = -Math.sin(angle);
 
-		// Helper: rotate point around (cx, cy)
 		inline function rx(lx:Float, ly:Float):Float
 			return cx + lx * sinA + ly * cosA;
 		inline function ry(lx:Float, ly:Float):Float
 			return cy + lx * cosA - ly * sinA;
+
+		// Dark outline/silhouette behind figure
+		var out = 2.5;
+		g.beginFill(0x0D0612, 0.85);
+		g.drawCircle(rx(0, -2), ry(0, -2), 6 + out);
+		g.moveTo(rx(-5 - out, 3), ry(-5 - out, 3));
+		g.lineTo(rx(5 + out, 3), ry(5 + out, 3));
+		g.lineTo(rx(4 + out, 14 + out), ry(4 + out, 14 + out));
+		g.lineTo(rx(-4 - out, 14 + out), ry(-4 - out, 14 + out));
+		g.endFill();
+		g.beginFill(0x0D0612, 0.7);
+		g.drawCircle(rx(-16, 3.5), ry(-16, 3.5), 3 + out);
+		g.drawCircle(rx(16, 3.5), ry(16, 3.5), 3 + out);
+		g.endFill();
 
 		// Body color (skin tone)
 		var skin = 0xFFCC99;

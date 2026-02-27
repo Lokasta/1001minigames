@@ -29,6 +29,8 @@ class Main extends hxd.App {
 		gameFlow.registerMinigame("Tetris", function() return new scenes.minigames.Tetris());
 		gameFlow.registerMinigame("Tap the Color", function() return new scenes.minigames.TapTheColor());
 		gameFlow.registerMinigame("Knife Hit", function() return new scenes.minigames.KnifeHit());
+		gameFlow.registerMinigame("Stack", function() return new scenes.minigames.Stack());
+		gameFlow.registerMinigame("Timing Ball", function() return new scenes.minigames.TimingBall());
 	}
 
 	override function onResize() {

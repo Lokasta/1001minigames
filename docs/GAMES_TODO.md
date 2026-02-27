@@ -20,6 +20,8 @@ Ideias de minigames para o 1001 Minigames. Marcados com estrela os que mais comb
 - [x] Tetris
 - [x] Tap the Color
 - [x] Knife Hit
+- [x] Stack
+- [x] Timing Ball
 
 ---
 
@@ -34,8 +36,8 @@ Ideias de minigames para o 1001 Minigames. Marcados com estrela os que mais comb
 ## Reflexo / Timing
 - [x] Tap the Color -- aparece uma cor escrita numa cor diferente (Stroop test), toca na correta
 - [x] Knife Hit -- jogue facas num tronco girando sem acertar as outras ⭐
-- [ ] Stack -- blocos deslizando, toque pra empilhar perfeitamente ⭐
-- [ ] Timing Ball -- bola quicando, toque no momento exato pra passar pelo obstaculo
+- [x] Stack -- blocos deslizando, toque pra empilhar perfeitamente ⭐
+- [x] Timing Ball -- bola quicando, toque no momento exato pra passar pelo obstaculo
 - [ ] Red Light Green Light -- segura pra correr, solta no red light (Round 6 vibes) ⭐
 - [ ] Duelo de Pistola -- espera o sinal, toca primeiro que o oponente
 

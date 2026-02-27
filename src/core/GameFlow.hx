@@ -50,6 +50,8 @@ class GameFlow {
 	static var DEBUG_HOLD_TIME = 3.0;
 	static var DEBUG_TOUCH_COUNT = 3;
 
+	var hashChecked: Bool = false;
+
 	/** Sistema de feedback (shake, zoom, flash, fade, FOV, etc.). Minigames usam via gameFlow.feedback. */
 	public var feedback: FeedbackManager;
 
@@ -247,6 +249,19 @@ class GameFlow {
 	}
 
 	public function update(dt: Float) {
+		// URL hash: open specific minigame for testing (e.g. #knife or #16 for Knife Hit)
+		if (!hashChecked) {
+			hashChecked = true;
+			#if js
+			if (state == Start) {
+				var h = js.Browser.location.hash;
+				if (h == "#knife" || h == "#16") {
+					js.Browser.window.history.replaceState("", "", js.Browser.window.location.pathname + (js.Browser.window.location.search != null ? js.Browser.window.location.search : ""));
+					startMinigameByIndex(16);
+				}
+			}
+			#end
+		}
 		// Debug menu: K toggle, Esc fecha, 3-finger hold (mobile)
 		if (hxd.Key.isPressed(hxd.Key.K)) toggleDebugMenu();
 		if (isDebugMenuVisible() && hxd.Key.isPressed(hxd.Key.ESCAPE)) {

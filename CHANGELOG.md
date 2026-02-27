@@ -1,6 +1,8 @@
 # Changelog
 
 ## 2026-02-27
+- **Feature**: Timing Ball minigame - bouncing ball with gravity, tap to bounce upward, red obstacle bars scroll down with gaps to pass through, gap shrinks over time (80→50px), speed ramp (100→220 px/s), squash/stretch ball animation, trail particles, floor shadow
+- **Feature**: Stack minigame - sliding blocks, tap to stack perfectly, cut piece falls off with gravity, perfect placement streak bonus (width grows back), 8-color cycling palette, camera scrolls up as stack grows, speed ramp 120→320 px/s over 40 blocks
 - **Feature**: Knife Hit minigame - rotating wooden board with humanoid target (circus style), tap to throw knives, avoid hitting the person or other stuck knives, rotation speed ramp + direction changes, knife blade/handle rendering
 - **Feature**: Tap the Color minigame - Stroop test: color word displayed in different ink color, tap the button matching the INK color, 6 colors, 4 options per round, timer shrinks as score increases (3s→1s), wrong tap or timeout = game over
 - **Feature**: Tetris minigame - 10x20 board, 7 tetrominoes with wall kicks, ghost piece preview, next piece display, drag to move/tap to rotate/swipe down to hard drop, line clear scoring (100/300/500/800), speed ramp, lock delay
