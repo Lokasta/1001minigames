@@ -51,6 +51,8 @@ class PacMan implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	var bg:Graphics;
 	var gameG:Graphics;
 	var scoreText:Text;
+	var instructText:Text;
+	var flashG:Graphics;
 	var interactive:Interactive;
 
 	var pacX:Float;
@@ -68,6 +70,7 @@ class PacMan implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	var touching:Bool;
 
 	var powerTimer:Float;
+	var deathTimer:Float;
 
 	var ghosts:Array<{x:Float, y:Float, dir:Int, color:Int, scared:Bool, respawnTimer:Float, lastTx:Int, lastTy:Int}>;
 	var dots:Array<Array<Int>>; // 0=empty, 1=dot, 2=power
@@ -90,24 +93,38 @@ class PacMan implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		rng = new hxd.Rand(77);
 
 		bg = new Graphics(contentObj);
-		bg.beginFill(0x0A0A1A);
+		bg.beginFill(0x000008);
 		bg.drawRect(0, 0, DESIGN_W, DESIGN_H);
 		bg.endFill();
 
 		gameG = new Graphics(contentObj);
+		flashG = new Graphics(contentObj);
 
 		scoreText = new Text(hxd.res.DefaultFont.get(), contentObj);
 		scoreText.text = "0";
-		scoreText.x = DESIGN_W / 2 - 20;
-		scoreText.y = 30;
-		scoreText.scale(2.0);
+		scoreText.x = DESIGN_W - 14;
+		scoreText.y = 20;
+		scoreText.scale(1.8);
+		scoreText.textAlign = Right;
+		scoreText.textColor = 0xFFFFFF;
+
+		instructText = new Text(hxd.res.DefaultFont.get(), contentObj);
+		instructText.text = "Deslize para mover";
+		instructText.x = DESIGN_W / 2;
+		instructText.y = OFFSET_Y + ROWS * TILE + 15;
+		instructText.scale(1.1);
+		instructText.textAlign = Center;
+		instructText.textColor = 0xFFFF00;
+		instructText.visible = true;
 
 		interactive = new Interactive(DESIGN_W, DESIGN_H, contentObj);
 		interactive.onPush = function(e) {
 			if (gameOver || ctx == null)
 				return;
-			if (!started)
+			if (!started) {
 				started = true;
+				instructText.visible = false;
+			}
 			touching = true;
 			touchStartX = e.relX;
 			touchStartY = e.relY;
@@ -257,10 +274,13 @@ class PacMan implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		mouthAnim = 0;
 		score = 0;
 		gameOver = false;
+		deathTimer = -1;
 		started = false;
 		powerTimer = 0;
 		touching = false;
 		scoreText.text = "0";
+		instructText.visible = true;
+		flashG.clear();
 
 		ghosts = [];
 		var ghostColors = [0xFF0000, 0xFFB8FF, 0x00FFFF];
@@ -283,8 +303,25 @@ class PacMan implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	}
 
 	public function update(dt:Float) {
-		if (ctx == null || gameOver)
+		if (ctx == null)
 			return;
+		if (gameOver) {
+			if (deathTimer >= 0) {
+				deathTimer += dt;
+				var t = deathTimer / 0.5;
+				if (t < 1) {
+					flashG.clear();
+					flashG.beginFill(0xFF0000, (1 - t) * 0.35);
+					flashG.drawRect(0, 0, DESIGN_W, DESIGN_H);
+					flashG.endFill();
+				} else {
+					flashG.clear();
+					ctx.lose(score, getMinigameId());
+					ctx = null;
+				}
+			}
+			return;
+		}
 		if (!started) {
 			draw();
 			return;
@@ -515,10 +552,11 @@ class PacMan implements IMinigameSceneWithLose implements IMinigameUpdatable {
 
 	function endGame() {
 		gameOver = true;
-		if (ctx != null && ctx.feedback != null)
-			ctx.feedback.shake2D(0.2, 4);
-		ctx.lose(score, getMinigameId());
-		ctx = null;
+		deathTimer = 0;
+		if (ctx != null && ctx.feedback != null) {
+			ctx.feedback.shake2D(0.3, 5);
+			ctx.feedback.flash(0xFF0000, 0.1);
+		}
 	}
 
 	function tileToScreenX(tx:Float):Float {
@@ -532,14 +570,19 @@ class PacMan implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	function draw() {
 		gameG.clear();
 
-		// Draw walls
+		// Draw walls with border style
 		for (row in 0...ROWS) {
 			for (col in 0...COLS) {
-				if (walls[row][col]) {
-					gameG.beginFill(0x2244CC);
-					gameG.drawRect(OFFSET_X + col * TILE + 1, OFFSET_Y + row * TILE + 1, TILE - 2, TILE - 2);
-					gameG.endFill();
-				}
+				if (!walls[row][col])
+					continue;
+				var wx = OFFSET_X + col * TILE;
+				var wy = OFFSET_Y + row * TILE;
+				gameG.beginFill(0x1122AA);
+				gameG.drawRoundedRect(wx + 1, wy + 1, TILE - 2, TILE - 2, 3);
+				gameG.endFill();
+				gameG.beginFill(0x2244DD, 0.4);
+				gameG.drawRoundedRect(wx + 3, wy + 3, TILE - 6, TILE - 6, 2);
+				gameG.endFill();
 			}
 		}
 
@@ -624,19 +667,14 @@ class PacMan implements IMinigameSceneWithLose implements IMinigameUpdatable {
 
 		// Power timer indicator
 		if (powerTimer > 0) {
-			var barW = 100.0 * (powerTimer / POWER_DURATION);
-			gameG.beginFill(0x4444FF, 0.6);
-			gameG.drawRect(DESIGN_W / 2 - 50, OFFSET_Y - 15, barW, 5);
+			var barW = 120.0 * (powerTimer / POWER_DURATION);
+			var barX = DESIGN_W / 2 - 60;
+			gameG.beginFill(0x222244, 0.5);
+			gameG.drawRoundedRect(barX, OFFSET_Y - 18, 120, 8, 3);
 			gameG.endFill();
-		}
-
-		// "Swipe to start" hint
-		if (!started) {
-			var hintText = new Text(hxd.res.DefaultFont.get(), gameG);
-			hintText.text = "Swipe to start!";
-			hintText.x = DESIGN_W / 2 - 45;
-			hintText.y = OFFSET_Y + ROWS * TILE + 20;
-			hintText.scale(1.2);
+			gameG.beginFill(0x4466FF, 0.8);
+			gameG.drawRoundedRect(barX, OFFSET_Y - 18, barW, 8, 3);
+			gameG.endFill();
 		}
 	}
 
