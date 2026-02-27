@@ -281,9 +281,12 @@ class DinoRunner implements IMinigameSceneWithLose implements IMinigameUpdatable
 		groundG.beginFill(lineC, 0.15);
 		var px = -ox;
 		while (px < designW + 40) {
-			var rw = 3 + (px * 7 % 5);
+			var ipx = Std.int(Math.abs(px));
+			var mod1 = (ipx * 7) % 5;
+			var rw = 3 + mod1;
 			groundG.drawRect(px, GROUND_Y + 3, rw, 2);
-			px += 12 + (px * 3 % 8);
+			var mod2 = (ipx * 3) % 8;
+			px += 12 + mod2;
 		}
 		groundG.endFill();
 	}
