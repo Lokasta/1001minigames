@@ -21,9 +21,10 @@ class SimonSays implements IMinigameSceneWithLose implements IMinigameUpdatable 
 	static var CENTER_Y = 310;
 	static var RADIUS = 135;
 	static var INNER_R = 0.28;
-	static var FLASH_DURATION = 0.45;
-	static var PAUSE_BETWEEN = 0.2;
+	static var FLASH_DURATION = 0.55;
+	static var PAUSE_BETWEEN = 0.25;
 	static var ROUND_DONE_DELAY = 0.6;
+	static var PRE_FLASH_DELAY = 0.7;
 	static var DEATH_DUR = 0.6;
 	static var CORRECT_FLASH_DUR = 0.2;
 
@@ -58,6 +59,7 @@ class SimonSays implements IMinigameSceneWithLose implements IMinigameUpdatable 
 	var flashPad:Int;
 	var flashTimer:Float;
 	var correctFlashTimer:Float;
+	var preFlashTimer:Float;
 
 	public var content(get, never):Object;
 
@@ -162,10 +164,11 @@ class SimonSays implements IMinigameSceneWithLose implements IMinigameUpdatable 
 		sequence.push(Std.int(Math.random() * 4));
 		userStep = 0;
 		state = Playing;
-		playIndex = 0;
-		flashPad = sequence[0];
-		flashTimer = FLASH_DURATION;
-		playTimer = FLASH_DURATION + PAUSE_BETWEEN;
+		playIndex = -1;
+		flashPad = -1;
+		flashTimer = 0;
+		preFlashTimer = PRE_FLASH_DELAY;
+		playTimer = 0;
 		statusText.text = "Observe...";
 		statusText.textColor = 0xAAAABB;
 		levelText.text = "Nível " + Std.string(sequence.length);
@@ -297,6 +300,7 @@ class SimonSays implements IMinigameSceneWithLose implements IMinigameUpdatable 
 		flashPad = -1;
 		flashTimer = 0;
 		correctFlashTimer = 0;
+		preFlashTimer = 0;
 		scoreText.text = "0";
 		levelText.text = "";
 		statusText.text = "Toque para começar";
@@ -352,6 +356,17 @@ class SimonSays implements IMinigameSceneWithLose implements IMinigameUpdatable 
 			correctFlashTimer -= dt;
 
 		if (state == Playing) {
+			if (preFlashTimer > 0) {
+				preFlashTimer -= dt;
+				if (preFlashTimer <= 0) {
+					playIndex = 0;
+					flashPad = sequence[0];
+					flashTimer = FLASH_DURATION;
+					playTimer = FLASH_DURATION + PAUSE_BETWEEN;
+				}
+				drawPads();
+				return;
+			}
 			playTimer -= dt;
 			if (playTimer <= 0) {
 				playIndex++;
