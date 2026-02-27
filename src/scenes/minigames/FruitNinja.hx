@@ -313,11 +313,11 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 				spawnCutPieces(item);
 			}
 		}
-		for (item in toRemove) {
-			if (item.mesh != null) {
-				item.mesh.remove();
-				item.mesh = null;
-			}
+			for (item in toRemove) {
+			if (item.mesh != null) { item.mesh.remove(); item.mesh = null; }
+			if (item.stemMesh != null) { item.stemMesh.remove(); item.stemMesh = null; }
+			if (item.fuseMesh != null) { item.fuseMesh.remove(); item.fuseMesh = null; }
+			if (item.sparkMesh != null) { item.sparkMesh.remove(); item.sparkMesh = null; }
 			items.remove(item);
 		}
 		if (hitBomb) {
@@ -391,6 +391,8 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 				vy: vy,
 				life: 0.7,
 				color: item.color,
+				spin: (Math.random() - 0.5) * 14.0,
+				spinAngle: 0,
 				mesh: null
 			};
 			if (s3d != null) {
@@ -413,7 +415,6 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		return mesh;
 	}
 
-	/** Placeholder: esfera. Para usar seus modelos 3D, troque por ex. hxd.res.Model.get().toMesh() ou clone do seu mesh. */
 	function createFruitMesh(r: Float, color: Int): Mesh {
 		if (s3d == null) return null;
 		var prim = new Sphere(1, 16, 16);
@@ -422,22 +423,63 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		var mesh = new Mesh(prim, s3d);
 		mesh.material.color.setColor(color);
 		mesh.material.shadows = false;
-		var scale = (r / 25) * 0.35;
+		var baseScale = (r / 25) * 0.38;
+		var shapeVar = (color % 5);
+		if (shapeVar == 0) { mesh.scaleX = baseScale * 1.3; mesh.scaleY = baseScale * 0.85; mesh.scaleZ = baseScale * 1.1; }
+		else if (shapeVar == 1) { mesh.scaleX = baseScale; mesh.scaleY = baseScale * 1.15; mesh.scaleZ = baseScale; }
+		else if (shapeVar == 2) { mesh.scaleX = baseScale * 1.1; mesh.scaleY = baseScale * 0.9; mesh.scaleZ = baseScale * 1.1; }
+		else { mesh.setScale(baseScale); }
+		sceneObjects.push(mesh);
+		return mesh;
+	}
+
+	function createStemMesh(): Mesh {
+		if (s3d == null) return null;
+		var prim = new Cube(0.04, 0.12, 0.04, true);
+		prim.unindex();
+		prim.addNormals();
+		var mesh = new Mesh(prim, s3d);
+		mesh.material.color.setColor(0x3D6B28);
+		mesh.material.shadows = false;
+		sceneObjects.push(mesh);
+		return mesh;
+	}
+
+	function createBombMesh(r: Float): Mesh {
+		if (s3d == null) return null;
+		var prim = new Sphere(1, 14, 14);
+		prim.unindex();
+		prim.addNormals();
+		var mesh = new Mesh(prim, s3d);
+		mesh.material.color.setColor(0x1a1a1a);
+		mesh.material.shadows = false;
+		var scale = (r / 25) * 0.38;
 		mesh.setScale(scale);
 		sceneObjects.push(mesh);
 		return mesh;
 	}
 
-	/** Placeholder: cubo. Troque por seu modelo 3D de bomba quando tiver. */
-	function createBombMesh(r: Float): Mesh {
+	function createFuseMesh(): Mesh {
 		if (s3d == null) return null;
-		var prim = new Cube(1, 1.2, 0.6, true);
+		var prim = new Cube(0.03, 0.15, 0.03, true);
 		prim.unindex();
 		prim.addNormals();
 		var mesh = new Mesh(prim, s3d);
-		mesh.material.color.setColor(0x2a2a2a);
+		mesh.material.color.setColor(0x666666);
 		mesh.material.shadows = false;
-		mesh.setScale((r / 25) * 0.35);
+		sceneObjects.push(mesh);
+		return mesh;
+	}
+
+	function createSparkMesh(): Mesh {
+		if (s3d == null) return null;
+		var prim = new Sphere(1, 8, 8);
+		prim.unindex();
+		prim.addNormals();
+		var mesh = new Mesh(prim, s3d);
+		mesh.material.color.setColor(0xFF6622);
+		mesh.material.shadows = false;
+		mesh.setScale(0.04);
 		sceneObjects.push(mesh);
 		return mesh;
 	}
@@ -453,11 +495,25 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 			0xE74C3C, 0xF39C12, 0x2ECC71, 0x3498DB, 0x9B59B6, 0x1ABC9C, 0xE91E63
 		][Std.int(Math.random() * 7)];
 		var mesh: Mesh = null;
+		var stemMesh: Mesh = null;
+		var fuseMesh: Mesh = null;
+		var sparkMesh: Mesh = null;
 		if (s3d != null) {
 			mesh = isBomb ? createBombMesh(r) : createFruitMesh(r, color);
 			if (mesh != null) mesh.setPosition(designTo3Dx(x), 0, designTo3Dz(y));
+			if (isBomb) {
+				fuseMesh = createFuseMesh();
+				sparkMesh = createSparkMesh();
+			} else {
+				stemMesh = createStemMesh();
+			}
 		}
-		items.push({ x: x, y: y, vx: vx, vy: vy, r: r, color: color, isBomb: isBomb, mesh: mesh });
+		var spin = (Math.random() - 0.5) * 8.0;
+		items.push({
+			x: x, y: y, vx: vx, vy: vy, r: r, color: color, isBomb: isBomb,
+			spinSpeed: spin, spinAngle: 0,
+			mesh: mesh, stemMesh: stemMesh, fuseMesh: fuseMesh, sparkMesh: sparkMesh
+		});
 	}
 
 	function drawPieces() {
@@ -644,7 +700,12 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 	}
 
 	public function dispose() {
-		for (item in items) if (item.mesh != null) { item.mesh.remove(); item.mesh = null; }
+		for (item in items) {
+			if (item.mesh != null) { item.mesh.remove(); item.mesh = null; }
+			if (item.stemMesh != null) { item.stemMesh.remove(); item.stemMesh = null; }
+			if (item.fuseMesh != null) { item.fuseMesh.remove(); item.fuseMesh = null; }
+			if (item.sparkMesh != null) { item.sparkMesh.remove(); item.sparkMesh = null; }
+		}
 		items = [];
 		for (p in pieces) if (p.mesh != null) { p.mesh.remove(); p.mesh = null; }
 		pieces = [];
@@ -680,8 +741,26 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 			item.vy += GRAVITY * dt;
 			item.x += item.vx * dt;
 			item.y += item.vy * dt;
+			item.spinAngle += item.spinSpeed * dt;
+			var wx = designTo3Dx(item.x);
+			var wz = designTo3Dz(item.y);
 			if (item.mesh != null) {
-				item.mesh.setPosition(designTo3Dx(item.x), 0, designTo3Dz(item.y));
+				item.mesh.setPosition(wx, 0, wz);
+				item.mesh.setRotation(item.spinAngle, item.spinAngle * 0.7, 0);
+			}
+			if (item.stemMesh != null) {
+				var stemOff = (item.r / 25) * 0.38;
+				item.stemMesh.setPosition(wx, stemOff + 0.06, wz);
+			}
+			if (item.fuseMesh != null) {
+				var fuseOff = (item.r / 25) * 0.38;
+				item.fuseMesh.setPosition(wx, fuseOff + 0.07, wz);
+			}
+			if (item.sparkMesh != null) {
+				var sparkOff = (item.r / 25) * 0.38;
+				var sparkPulse = 0.03 + Math.sin(haxe.Timer.stamp() * 12) * 0.015;
+				item.sparkMesh.setPosition(wx, sparkOff + 0.17, wz);
+				item.sparkMesh.setScale(sparkPulse);
 			}
 		}
 
@@ -696,9 +775,11 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 			p.x += p.vx * dt;
 			p.y += p.vy * dt;
 			p.life -= dt;
+			p.spinAngle += p.spin * dt;
 			if (p.mesh != null) {
 				p.mesh.setPosition(designTo3Dx(p.x), 0, designTo3Dz(p.y));
-				p.mesh.setScale(0.08 * Math.max(0.01, p.life / 0.7));
+				p.mesh.setScale(0.12 * Math.max(0.01, p.life / 0.7));
+				p.mesh.setRotation(p.spinAngle, p.spinAngle * 0.6, 0);
 			}
 			if (p.life <= 0 || p.y > designH + 50) {
 				if (p.mesh != null) {
@@ -713,10 +794,10 @@ class FruitNinja implements IMinigameSceneWithLose implements IMinigameUpdatable
 		var i = items.length - 1;
 		while (i >= 0) {
 			if (items[i].y < -50 || items[i].y > designH + 80) {
-				if (items[i].mesh != null) {
-					items[i].mesh.remove();
-					items[i].mesh = null;
-				}
+				if (items[i].mesh != null) { items[i].mesh.remove(); items[i].mesh = null; }
+				if (items[i].stemMesh != null) { items[i].stemMesh.remove(); items[i].stemMesh = null; }
+				if (items[i].fuseMesh != null) { items[i].fuseMesh.remove(); items[i].fuseMesh = null; }
+				if (items[i].sparkMesh != null) { items[i].sparkMesh.remove(); items[i].sparkMesh = null; }
 				if (!items[i].isBomb) {
 					misses++;
 					updateLivesText();
@@ -775,7 +856,12 @@ private typedef FruitItem = {
 	var r: Float;
 	var color: Int;
 	var isBomb: Bool;
+	var spinSpeed: Float;
+	var spinAngle: Float;
 	@:optional var mesh: h3d.scene.Mesh;
+	@:optional var stemMesh: h3d.scene.Mesh;
+	@:optional var fuseMesh: h3d.scene.Mesh;
+	@:optional var sparkMesh: h3d.scene.Mesh;
 }
 
 private typedef CutPiece = {
@@ -785,5 +871,7 @@ private typedef CutPiece = {
 	var vy: Float;
 	var life: Float;
 	var color: Int;
+	var spin: Float;
+	var spinAngle: Float;
 	@:optional var mesh: h3d.scene.Mesh;
 }
