@@ -17,20 +17,23 @@ Ideias de minigames para o 1001 Minigames. Marcados com estrela os que mais comb
 - [x] Space Invaders
 - [x] Asteroids
 - [x] Pac-Man
+- [x] Tetris
+- [x] Tap the Color
+- [x] Knife Hit
 
 ---
 
 ## Classicos Reimaginados
 - [x] Pong -- rebate a bolinha contra a IA, quem marca primeiro perde
 - [ ] Breakout -- quebre os blocos arrastando a barra
-- [ ] Tetris -- encaixe pecas, tela vertical cai perfeito
+- [x] Tetris -- encaixe pecas, tela vertical cai perfeito
 - [x] Pac-Man -- labirinto compacto, swipe pra mudar direcao
 - [x] Space Invaders -- naves descendo, tap pra atirar
 - [x] Asteroids -- nave no centro, gira e atira nos asteroides
 
 ## Reflexo / Timing
-- [ ] Tap the Color -- aparece uma cor escrita numa cor diferente (Stroop test), toca na correta
-- [ ] Knife Hit -- jogue facas num tronco girando sem acertar as outras ⭐
+- [x] Tap the Color -- aparece uma cor escrita numa cor diferente (Stroop test), toca na correta
+- [x] Knife Hit -- jogue facas num tronco girando sem acertar as outras ⭐
 - [ ] Stack -- blocos deslizando, toque pra empilhar perfeitamente ⭐
 - [ ] Timing Ball -- bola quicando, toque no momento exato pra passar pelo obstaculo
 - [ ] Red Light Green Light -- segura pra correr, solta no red light (Round 6 vibes) ⭐

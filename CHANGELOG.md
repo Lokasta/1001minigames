@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-02-27
+- **Feature**: Knife Hit minigame - rotating wooden board with humanoid target (circus style), tap to throw knives, avoid hitting the person or other stuck knives, rotation speed ramp + direction changes, knife blade/handle rendering
+- **Feature**: Tap the Color minigame - Stroop test: color word displayed in different ink color, tap the button matching the INK color, 6 colors, 4 options per round, timer shrinks as score increases (3s→1s), wrong tap or timeout = game over
+- **Feature**: Tetris minigame - 10x20 board, 7 tetrominoes with wall kicks, ghost piece preview, next piece display, drag to move/tap to rotate/swipe down to hard drop, line clear scoring (100/300/500/800), speed ramp, lock delay
+
 ## 2026-02-24
 - **Feature**: Penalty 3D game feel overhaul — swipe power affects shot speed, gravity arc, after-touch to bend ball mid-flight, post/crossbar/keeper collision with bouncing, ball flies into distance on miss
 - **Fix**: FeedbackManager shake2D no longer clobbers 3D camera on shake end
