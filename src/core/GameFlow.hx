@@ -24,6 +24,11 @@ class GameFlow {
 
 	static var TRANSITION_DURATION = 0.38;
 
+	// Drag-driven transition constants
+	static var DRAG_THRESHOLD: Float = 0.3;
+	static var SNAP_DURATION: Float = 0.25;
+	static var RUBBERBAND_DURATION: Float = 0.2;
+
 	var state: FlowState;
 	var swipe: SwipeDetector;
 	var root: Object;
@@ -45,6 +50,16 @@ class GameFlow {
 	var transitionSkipOutgoing: Bool; // true quando abrimos pelo debug sem tela de saída
 	var debugMenu: DebugMenu;
 	var debugMenuKeyPressed: Bool;
+
+	// Drag-driven transition state
+	var isDragging: Bool = false;
+	var dragProgress: Float = 0;
+	var previewMinigame: IMinigameScene = null;
+	var previewMinigameIndex: Int = -1;
+	var isSnapping: Bool = false;
+	var isRubberbanding: Bool = false;
+	var snapT: Float = 0;
+	var snapStartProgress: Float = 0;
 
 	// 3-finger hold to open debug menu on mobile
 	var activeTouches: Map<Int, Bool>;
@@ -82,6 +97,10 @@ class GameFlow {
 		// SwipeDetector primeiro para ficar "atrás"; slideContainer em cima para minigames receberem input
 		swipe = new SwipeDetector(root, designW, designH);
 		swipe.onSwipeUp = onSwipeUp;
+		swipe.onDragStart = onDragStart;
+		swipe.onDragMove = onDragMove;
+		swipe.onDragEnd = onDragEnd;
+		swipe.onDragCancel = onDragCancel;
 
 		slideContainer = new Object(root);
 
@@ -108,6 +127,7 @@ class GameFlow {
 	function onDebugSelectMinigame(index: Int) {
 		if (index < 0 || index >= minigameFactories.length) return;
 		if (debugMenu != null) debugMenu.visible = false;
+		cancelDragIfActive();
 		startMinigameByIndex(index);
 	}
 
@@ -154,8 +174,14 @@ class GameFlow {
 		return currentMinigame != null && Std.isOfType(currentMinigame, IMinigame3D);
 	}
 
+	function isAnimating(): Bool {
+		return transitioning || isDragging || isSnapping || isRubberbanding;
+	}
+
+	// --- Fast swipe (existing behavior) ---
+
 	function onSwipeUp() {
-		if (transitioning) return;
+		if (isAnimating()) return;
 		switch state {
 			case Start:
 				startTransitionToNextMinigame();
@@ -165,8 +191,120 @@ class GameFlow {
 		}
 	}
 
+	// --- Drag-driven transition ---
+
+	function onDragStart(startY: Float) {
+		if (state != Start && state != Score) return;
+		if (isAnimating()) return;
+		if (minigameFactories.length == 0) return;
+
+		isDragging = true;
+		dragProgress = 0;
+
+		// Pre-instantiate next minigame
+		previewMinigameIndex = Std.random(minigameFactories.length);
+		previewMinigame = minigameFactories[previewMinigameIndex]();
+
+		// Add to scene graph below current screen
+		slideContainer.addChild(previewMinigame.content);
+		previewMinigame.content.y = designH;
+		previewMinigame.content.visible = true;
+		previewMinigame.content.scaleX = 0.97;
+		previewMinigame.content.scaleY = 0.97;
+
+		// Do NOT call start(), setOnLose(), or setScene3D() yet
+	}
+
+	function onDragMove(dy: Float) {
+		if (!isDragging) return;
+
+		// dy negative = upward drag, positive = downward
+		dragProgress = Math.max(0, Math.min(1, -dy / designH));
+
+		slideContainer.y = -designH * dragProgress;
+
+		if (previewMinigame != null) {
+			var s = 0.97 + 0.03 * dragProgress;
+			previewMinigame.content.scaleX = s;
+			previewMinigame.content.scaleY = s;
+		}
+	}
+
+	function onDragEnd(dy: Float) {
+		if (!isDragging) return;
+		isDragging = false;
+
+		// Recalculate final progress
+		dragProgress = Math.max(0, Math.min(1, -dy / designH));
+		snapStartProgress = dragProgress;
+
+		if (dragProgress >= DRAG_THRESHOLD) {
+			// Snap forward — complete the transition
+			isSnapping = true;
+			snapT = 0;
+
+			// Set up the minigame fully now
+			currentMinigame = previewMinigame;
+			previewMinigame = null;
+
+			if (s3d != null && Std.isOfType(currentMinigame, IMinigame3D)) {
+				(cast currentMinigame : IMinigame3D).setScene3D(s3d);
+			}
+			var ctx = new MinigameContext(onMinigameLost);
+			ctx.feedback = feedback;
+			if (Std.isOfType(currentMinigame, IMinigameSceneWithLose)) {
+				(cast currentMinigame : IMinigameSceneWithLose).setOnLose(ctx);
+			}
+
+			currentMinigame.start();
+			state = Playing;
+		} else {
+			// Rubber-band back
+			isRubberbanding = true;
+			snapT = 0;
+		}
+	}
+
+	function onDragCancel() {
+		if (!isDragging) return;
+		isDragging = false;
+
+		// Always rubber-band back on cancel
+		snapStartProgress = dragProgress;
+		isRubberbanding = true;
+		snapT = 0;
+	}
+
+	function cancelDragIfActive() {
+		if (isDragging) {
+			isDragging = false;
+			cleanupPreviewMinigame();
+			slideContainer.y = 0;
+		}
+		if (isSnapping) {
+			isSnapping = false;
+		}
+		if (isRubberbanding) {
+			isRubberbanding = false;
+			cleanupPreviewMinigame();
+			slideContainer.y = 0;
+		}
+	}
+
+	function cleanupPreviewMinigame() {
+		if (previewMinigame != null) {
+			previewMinigame.dispose();
+			previewMinigame.content.remove();
+			previewMinigame = null;
+			previewMinigameIndex = -1;
+		}
+	}
+
+	// --- Existing transition methods ---
+
 	public function startMinigameByIndex(index: Int) {
 		if (index < 0 || index >= minigameFactories.length) return;
+		cancelDragIfActive();
 		if (state == Playing && currentMinigame != null) {
 			currentMinigame.dispose();
 			currentMinigame.content.remove();
@@ -270,6 +408,22 @@ class GameFlow {
 		transitioning = false;
 	}
 
+	function finishDragTransition() {
+		// Remove outgoing screen (first child — start or score screen)
+		if (slideContainer.numChildren > 1) {
+			var outgoing = slideContainer.getChildAt(0);
+			slideContainer.removeChild(outgoing);
+			outgoing.visible = false;
+		}
+
+		slideContainer.y = 0;
+		currentMinigame.content.y = 0;
+		currentMinigame.content.scaleX = 1;
+		currentMinigame.content.scaleY = 1;
+
+		isSnapping = false;
+	}
+
 	function onGoHome() {
 		if (state != Score) return;
 		scoreScreen.visible = false;
@@ -340,6 +494,7 @@ class GameFlow {
 			threeTouchTimer = 0;
 		}
 
+		// Old automated transition (fast swipe / debug menu)
 		if (transitioning) {
 			transitionT += dt;
 			var t = transitionT / TRANSITION_DURATION;
@@ -350,6 +505,48 @@ class GameFlow {
 				var ease = Easing.easeOutCubic(t);
 				slideContainer.y = -designH * ease;
 				currentMinigame.content.scaleX = currentMinigame.content.scaleY = 0.97 + 0.03 * ease;
+			}
+			return;
+		}
+
+		// Snap-forward animation after drag release past threshold
+		if (isSnapping) {
+			snapT += dt;
+			var t = snapT / SNAP_DURATION;
+			if (t >= 1) {
+				finishDragTransition();
+			} else {
+				var ease = Easing.easeOutCubic(t);
+				// Interpolate from snapStartProgress to 1.0
+				var progress = snapStartProgress + (1.0 - snapStartProgress) * ease;
+				slideContainer.y = -designH * progress;
+				if (currentMinigame != null) {
+					var s = 0.97 + 0.03 * progress;
+					currentMinigame.content.scaleX = s;
+					currentMinigame.content.scaleY = s;
+				}
+			}
+			return;
+		}
+
+		// Rubber-band animation after drag release below threshold
+		if (isRubberbanding) {
+			snapT += dt;
+			var t = snapT / RUBBERBAND_DURATION;
+			if (t >= 1) {
+				slideContainer.y = 0;
+				isRubberbanding = false;
+				cleanupPreviewMinigame();
+			} else {
+				var ease = Easing.easeOutCubic(t);
+				// Interpolate from snapStartProgress back to 0
+				var progress = snapStartProgress * (1.0 - ease);
+				slideContainer.y = -designH * progress;
+				if (previewMinigame != null) {
+					var s = 0.97 + 0.03 * progress;
+					previewMinigame.content.scaleX = s;
+					previewMinigame.content.scaleY = s;
+				}
 			}
 			return;
 		}
@@ -366,6 +563,12 @@ class GameFlow {
 		swipe.setSize(w, h);
 		if (startScreen != null) startScreen.setSize(w, h);
 		if (scoreScreen != null) scoreScreen.setSize(w, h);
+
+		// Cancel any in-progress drag on resize
+		if (isDragging || isRubberbanding) {
+			cancelDragIfActive();
+			swipe.cancelDrag();
+		}
 	}
 
 	public function dispose() {
@@ -379,6 +582,7 @@ class GameFlow {
 			debugMenu = null;
 		}
 		swipe.dispose();
+		cleanupPreviewMinigame();
 		if (currentMinigame != null) {
 			currentMinigame.dispose();
 			currentMinigame = null;
