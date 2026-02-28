@@ -88,6 +88,7 @@ class GameFlow {
 		scoreScreen = new scenes.ScoreScreen(slideContainer);
 		scoreScreen.setSize(designW, designH);
 		scoreScreen.visible = false;
+		scoreScreen.onGoHome = onGoHome;
 
 		state = Start;
 		startScreen.visible = true;
@@ -232,6 +233,15 @@ class GameFlow {
 		transitioning = false;
 	}
 
+	function onGoHome() {
+		if (state != Score) return;
+		scoreScreen.visible = false;
+		slideContainer.removeChildren();
+		slideContainer.addChild(startScreen);
+		startScreen.visible = true;
+		state = Start;
+	}
+
 	public function onMinigameLost(score: Int, minigameId: String) {
 		if (state != Playing || currentMinigame == null) return;
 
@@ -255,9 +265,22 @@ class GameFlow {
 			#if js
 			if (state == Start) {
 				var h = js.Browser.location.hash;
-				if (h == "#knife" || h == "#16") {
-					js.Browser.window.history.replaceState("", "", js.Browser.window.location.pathname + (js.Browser.window.location.search != null ? js.Browser.window.location.search : ""));
-					startMinigameByIndex(16);
+				if (h != null && h.length > 1) {
+					var tag = h.substr(1); // remove #
+					var idx = Std.parseInt(tag);
+					if (idx == null) {
+						// Name-based lookup
+						for (i in 0...minigameNames.length) {
+							if (minigameNames[i].toLowerCase().indexOf(tag.toLowerCase()) >= 0) {
+								idx = i;
+								break;
+							}
+						}
+					}
+					if (idx != null && idx >= 0 && idx < minigameFactories.length) {
+						js.Browser.window.history.replaceState("", "", js.Browser.window.location.pathname + (js.Browser.window.location.search != null ? js.Browser.window.location.search : ""));
+						startMinigameByIndex(idx);
+					}
 				}
 			}
 			#end
@@ -293,6 +316,8 @@ class GameFlow {
 		}
 
 		if (feedback != null) feedback.update(dt);
+		if (startScreen != null && state == Start) startScreen.update(dt);
+		if (scoreScreen != null && state == Score) scoreScreen.update(dt);
 		if (currentMinigame != null && Std.isOfType(currentMinigame, IMinigameUpdatable)) {
 			(cast currentMinigame : IMinigameUpdatable).update(dt);
 		}

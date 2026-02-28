@@ -1,6 +1,10 @@
 # Changelog
 
 ## 2026-02-28
+- **UI**: Dino Runner full polish — swipe up to jump, swipe down to duck (timer-based 0.6s), dust particles on jump/land/run, parallax clouds, gradient sky with sun/moon, better dino with tail/arms/spikes, cactus shadows & spines, double cactus clusters at high difficulty, distance-based scoring, near-miss detection, landing squash, speed ramp with ease-out curve
+- **UI**: Start Screen visual overhaul — gradient background, pulsing glow rings, floating particles, animated chevrons, title shadow, subtitle decorative line
+- **UI**: Score Screen & Penalty 3D visual polish
+- **Feature**: Generic hash-based minigame launcher (e.g. #dino, #knife, #3) for testing
 - **Feature**: Native iOS build - Haxe/HashLink/C pipeline with SDL2 2.30.11, CMake + Xcode, runs on real iOS devices
 - **DevOps**: iOS setup script (`scripts/setup-ios.sh`) downloads SDL2 & HashLink source, patches for iOS, generates Xcode project
 - **DevOps**: Updated .gitignore to exclude large iOS/Android deps and build artifacts (open-source safe)
