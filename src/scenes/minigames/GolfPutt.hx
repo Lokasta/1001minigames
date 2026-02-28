@@ -21,18 +21,20 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	static var DESIGN_H = 640;
 	static var BALL_RADIUS = 7.0;
 	static var HOLE_RADIUS = 12.0;
-	static var MAX_POWER = 500.0;
-	static var DRAG_SCALE = 2.5; // drag pixels to velocity multiplier
-	static var FRICTION = 0.97; // per frame
-	static var WALL_BOUNCE = 0.6;
-	static var STOP_THRESHOLD = 8.0;
-	static var SINK_SPEED_MAX = 280.0; // ball must be slow enough to sink
+	// Subtask 1: Tuned physics constants
+	static var MAX_POWER = 400.0;
+	static var DRAG_SCALE = 2.0;
+	static var FRICTION = 0.985;
+	static var WALL_BOUNCE = 0.7;
+	static var STOP_THRESHOLD = 5.0;
+	static var SINK_SPEED_MAX = 280.0;
+	static var MIN_DRAG = 15.0;
 
 	// Course area
 	static var COURSE_LEFT = 20;
 	static var COURSE_RIGHT = 340;
 	static var COURSE_TOP = 130;
-	static var COURSE_BOTTOM = 580;
+	static var COURSE_BOTTOM = 570;
 
 	final contentObj:Object;
 	var ctx:MinigameContext;
@@ -43,6 +45,7 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	var aimG:Graphics;
 	var obstacleG:Graphics;
 	var uiG:Graphics;
+	var confettiG:Graphics;
 	var interactive:Interactive;
 
 	var titleText:Text;
@@ -51,6 +54,8 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	var strokeText:Text;
 	var hintText:Text;
 	var resultText:Text;
+	var strokeLabel:Text;
+	var powerText:Text;
 
 	// Ball physics
 	var ballX:Float;
@@ -76,9 +81,9 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	// Game state
 	var gameOver:Bool;
 	var score:Int;
-	var hole:Int; // current hole number
-	var strokes:Int; // strokes used this hole
-	var maxStrokes:Int; // max strokes per hole
+	var hole:Int;
+	var strokes:Int;
+	var maxStrokes:Int;
 	var ballSunk:Bool;
 	var sinkAnimTimer:Float;
 	var nextHoleTimer:Float;
@@ -90,6 +95,18 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 
 	// Ball shadow/glow animation
 	var ballPulse:Float;
+
+	// Subtask 7: Ball roll angle
+	var ballRollAngle:Float;
+
+	// Subtask 9: Confetti particles
+	var confetti:Array<{x:Float, y:Float, vx:Float, vy:Float, color:Int, life:Float, size:Float}>;
+
+	// Subtask 10: Flag wave timer
+	var flagWaveTimer:Float;
+
+	// Subtask 10: Result text scale bounce
+	var resultBounceTimer:Float;
 
 	var rng:hxd.Rand;
 
@@ -110,6 +127,7 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		ballG = new Graphics(contentObj);
 		aimG = new Graphics(contentObj);
 		uiG = new Graphics(contentObj);
+		confettiG = new Graphics(contentObj);
 
 		// UI texts
 		titleText = new Text(hxd.res.DefaultFont.get(), contentObj);
@@ -142,12 +160,29 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		strokeText.y = 80;
 		strokeText.textColor = 0x9BA4C4;
 
+		// Subtask 12: STROKES label
+		strokeLabel = new Text(hxd.res.DefaultFont.get(), contentObj);
+		strokeLabel.text = "STROKES";
+		strokeLabel.textAlign = Left;
+		strokeLabel.x = 20;
+		strokeLabel.y = 100;
+		strokeLabel.textColor = 0x667788;
+
 		hintText = new Text(hxd.res.DefaultFont.get(), contentObj);
 		hintText.text = "Drag to aim, release to putt!";
 		hintText.textAlign = Center;
 		hintText.x = DESIGN_W / 2;
-		hintText.y = DESIGN_H - 45;
+		hintText.y = DESIGN_H - 35;
 		hintText.textColor = 0x667788;
+
+		// Subtask 11: Power percentage text
+		powerText = new Text(hxd.res.DefaultFont.get(), contentObj);
+		powerText.text = "";
+		powerText.textAlign = Center;
+		powerText.x = DESIGN_W / 2;
+		powerText.y = 580;
+		powerText.textColor = 0xCCCCCC;
+		powerText.alpha = 0;
 
 		resultText = new Text(hxd.res.DefaultFont.get(), contentObj);
 		resultText.text = "";
@@ -166,6 +201,7 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 
 		walls = [];
 		trail = [];
+		confetti = [];
 
 		gameOver = false;
 		score = 0;
@@ -180,6 +216,9 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		totalTime = 0;
 		ballPulse = 0;
 		gameOverTimer = 0;
+		ballRollAngle = 0;
+		flagWaveTimer = 0;
+		resultBounceTimer = 0;
 
 		ballX = 0;
 		ballY = 0;
@@ -197,7 +236,6 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 
 	function drawBackground():Void {
 		bg.clear();
-		// Dark sky gradient
 		var steps = 16;
 		for (i in 0...steps) {
 			var t = i / steps;
@@ -224,32 +262,43 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		trail = [];
 		walls = [];
 		resultText.alpha = 0;
+		// Subtask 13: Reset new state
+		confetti = [];
+		flagWaveTimer = 0;
+		ballRollAngle = 0;
+		resultBounceTimer = 0;
 
-		// Max strokes increases with difficulty
 		maxStrokes = holeNum < 3 ? 3 : (holeNum < 6 ? 2 : 1);
 
-		// Ball start position — bottom center area
+		// Ball start position
 		ballX = DESIGN_W / 2.0;
 		ballY = COURSE_BOTTOM - 40.0;
 		ballVX = 0;
 		ballVY = 0;
 
-		// Hole position — upper area, varies per hole
+		// Hole position
 		var marginX = 60.0;
 		var marginY = 40.0;
 		holeX = marginX + rng.random(Std.int(COURSE_RIGHT - COURSE_LEFT - marginX * 2));
 		holeX += COURSE_LEFT;
 		holeY = COURSE_TOP + marginY + rng.random(Std.int((COURSE_BOTTOM - COURSE_TOP) * 0.35));
 
-		// Generate obstacles based on hole number
-		generateObstacles(holeNum);
+		// Subtask 4: Ensure minimum distance of 150px
+		var dx = ballX - holeX;
+		var dy = ballY - holeY;
+		var dist = Math.sqrt(dx * dx + dy * dy);
+		if (dist < 150) {
+			holeY = ballY - 150;
+			if (holeY < COURSE_TOP + marginY) holeY = COURSE_TOP + marginY;
+		}
 
+		generateObstacles(holeNum);
 		updateStrokeDisplay();
 	}
 
 	function generateObstacles(holeNum:Int):Void {
 		walls = [];
-		if (holeNum == 0) return; // first hole: no obstacles
+		if (holeNum == 0) return;
 
 		var cw = COURSE_RIGHT - COURSE_LEFT;
 		var ch = COURSE_BOTTOM - COURSE_TOP;
@@ -257,46 +306,71 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		var midY = (COURSE_TOP + COURSE_BOTTOM) / 2.0;
 
 		if (holeNum == 1) {
-			// One horizontal wall in the middle
 			walls.push({x: midX - 60, y: midY, w: 120, h: 8});
 		} else if (holeNum == 2) {
-			// Two walls creating a channel
 			walls.push({x: COURSE_LEFT, y: midY - 30, w: cw * 0.45, h: 8});
 			walls.push({x: midX + 20, y: midY + 30, w: cw * 0.45, h: 8});
 		} else if (holeNum == 3) {
-			// L-shaped barrier
 			walls.push({x: midX - 50, y: midY - 40, w: 8, h: 80});
 			walls.push({x: midX - 50, y: midY + 32, w: 70, h: 8});
 		} else if (holeNum == 4) {
-			// Two vertical pillars
 			walls.push({x: midX - 50, y: midY - 60, w: 8, h: 60});
 			walls.push({x: midX + 42, y: midY, w: 8, h: 60});
 		} else {
-			// Random walls (harder)
+			// Subtask 4: Cap at 4 walls, add viable-path check
 			var numWalls = 2 + Std.int(holeNum / 3);
-			if (numWalls > 5) numWalls = 5;
-			for (i in 0...numWalls) {
-				var horizontal = rng.random(2) == 0;
-				var wx:Float, wy:Float, ww:Float, wh:Float;
-				if (horizontal) {
-					ww = 40 + rng.random(80);
-					wh = 8;
-					wx = COURSE_LEFT + 30 + rng.random(Std.int(cw - ww - 60));
-					wy = COURSE_TOP + 50 + rng.random(Std.int(ch - 100));
-				} else {
-					ww = 8;
-					wh = 40 + rng.random(70);
-					wx = COURSE_LEFT + 30 + rng.random(Std.int(cw - 60));
-					wy = COURSE_TOP + 50 + rng.random(Std.int(ch - wh - 100));
+			if (numWalls > 4) numWalls = 4;
+
+			var attempts = 0;
+			while (attempts < 3) {
+				walls = [];
+				for (i in 0...numWalls) {
+					var horizontal = rng.random(2) == 0;
+					var wx:Float, wy:Float, ww:Float, wh:Float;
+					if (horizontal) {
+						ww = 40 + rng.random(80);
+						wh = 8;
+						wx = COURSE_LEFT + 30 + rng.random(Std.int(cw - ww - 60));
+						wy = COURSE_TOP + 50 + rng.random(Std.int(ch - 100));
+					} else {
+						ww = 8;
+						wh = 40 + rng.random(70);
+						wx = COURSE_LEFT + 30 + rng.random(Std.int(cw - 60));
+						wy = COURSE_TOP + 50 + rng.random(Std.int(ch - wh - 100));
+					}
+					var distBall = Math.sqrt((wx - ballX) * (wx - ballX) + (wy - ballY) * (wy - ballY));
+					var distHole = Math.sqrt((wx - holeX) * (wx - holeX) + (wy - holeY) * (wy - holeY));
+					if (distBall > 50 && distHole > 50) {
+						walls.push({x: wx, y: wy, w: ww, h: wh});
+					}
 				}
-				// Don't place too close to ball or hole
-				var distBall = Math.sqrt((wx - ballX) * (wx - ballX) + (wy - ballY) * (wy - ballY));
-				var distHole = Math.sqrt((wx - holeX) * (wx - holeX) + (wy - holeY) * (wy - holeY));
-				if (distBall > 50 && distHole > 50) {
-					walls.push({x: wx, y: wy, w: ww, h: wh});
-				}
+				if (hasViablePath()) break;
+				attempts++;
 			}
 		}
+	}
+
+	// Subtask 4: Check that walls don't completely block the path
+	function hasViablePath():Bool {
+		var testPoints = 5;
+		var passCount = 0;
+		for (t in 0...testPoints) {
+			var testX = COURSE_LEFT + 20 + (COURSE_RIGHT - COURSE_LEFT - 40) * t / (testPoints - 1);
+			var blocked = false;
+			for (w in walls) {
+				if (testX >= w.x && testX <= w.x + w.w) {
+					// Check if wall spans a Y range between ball and hole
+					var minY = Math.min(ballY, holeY);
+					var maxY = Math.max(ballY, holeY);
+					if (w.y < maxY && w.y + w.h > minY) {
+						blocked = true;
+						break;
+					}
+				}
+			}
+			if (!blocked) passCount++;
+		}
+		return passCount >= 2;
 	}
 
 	function updateStrokeDisplay():Void {
@@ -327,9 +401,9 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		var dy = dragStartY - dragCurrentY;
 		var dist = Math.sqrt(dx * dx + dy * dy);
 
-		if (dist < 10) return; // too short, ignore
+		// Subtask 1: Increased min drag from 10 to 15
+		if (dist < MIN_DRAG) return;
 
-		// Clamp power
 		var power = Math.min(dist * DRAG_SCALE, MAX_POWER);
 		var nx = dx / dist;
 		var ny = dy / dist;
@@ -339,23 +413,33 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		ballMoving = true;
 		strokes++;
 		updateStrokeDisplay();
-
-		// Hide hint after first putt
 		hintText.alpha = 0;
+		powerText.alpha = 0;
 	}
 
 	function drawCourse():Void {
 		courseG.clear();
 
-		// Green felt
 		// Outer border
 		courseG.beginFill(0x0A2810, 0.9);
 		courseG.drawRect(COURSE_LEFT - 4, COURSE_TOP - 4, COURSE_RIGHT - COURSE_LEFT + 8, COURSE_BOTTOM - COURSE_TOP + 8);
 		courseG.endFill();
 
-		// Main green
-		courseG.beginFill(0x1B5E20);
+		// Subtask 5: Gradient green - darker edges to lighter center (3 layers)
+		courseG.beginFill(0x164D1A);
 		courseG.drawRect(COURSE_LEFT, COURSE_TOP, COURSE_RIGHT - COURSE_LEFT, COURSE_BOTTOM - COURSE_TOP);
+		courseG.endFill();
+
+		// Mid layer - slightly lighter
+		var inset1 = 15;
+		courseG.beginFill(0x1B5E20, 0.8);
+		courseG.drawRect(COURSE_LEFT + inset1, COURSE_TOP + inset1, COURSE_RIGHT - COURSE_LEFT - inset1 * 2, COURSE_BOTTOM - COURSE_TOP - inset1 * 2);
+		courseG.endFill();
+
+		// Center layer - lightest
+		var inset2 = 40;
+		courseG.beginFill(0x1F6D25, 0.5);
+		courseG.drawRect(COURSE_LEFT + inset2, COURSE_TOP + inset2, COURSE_RIGHT - COURSE_LEFT - inset2 * 2, COURSE_BOTTOM - COURSE_TOP - inset2 * 2);
 		courseG.endFill();
 
 		// Lighter green stripes
@@ -364,7 +448,7 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		var stripe = false;
 		while (sx < COURSE_RIGHT) {
 			if (stripe) {
-				courseG.beginFill(0x2E7D32, 0.3);
+				courseG.beginFill(0x2E7D32, 0.2);
 				var w = Math.min(stripeW, COURSE_RIGHT - sx);
 				courseG.drawRect(sx, COURSE_TOP, w, COURSE_BOTTOM - COURSE_TOP);
 				courseG.endFill();
@@ -372,6 +456,35 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 			sx += stripeW;
 			stripe = !stripe;
 		}
+
+		// Subtask 5: Texture dots (grass grain)
+		var dotSpacing = 20;
+		var gx = COURSE_LEFT + 10;
+		while (gx < COURSE_RIGHT - 10) {
+			var gy = COURSE_TOP + 10;
+			while (gy < COURSE_BOTTOM - 10) {
+				courseG.beginFill(0x0A3A0E, 0.08);
+				courseG.drawCircle(gx, gy, 1);
+				courseG.endFill();
+				gy += dotSpacing;
+			}
+			gx += dotSpacing;
+		}
+
+		// Subtask 5: Fringe border (rough grass edge)
+		var fringeW = 3.0;
+		courseG.beginFill(0x2E7D32, 0.4);
+		courseG.drawRect(COURSE_LEFT, COURSE_TOP, COURSE_RIGHT - COURSE_LEFT, fringeW);
+		courseG.endFill();
+		courseG.beginFill(0x2E7D32, 0.4);
+		courseG.drawRect(COURSE_LEFT, COURSE_BOTTOM - fringeW, COURSE_RIGHT - COURSE_LEFT, fringeW);
+		courseG.endFill();
+		courseG.beginFill(0x2E7D32, 0.4);
+		courseG.drawRect(COURSE_LEFT, COURSE_TOP, fringeW, COURSE_BOTTOM - COURSE_TOP);
+		courseG.endFill();
+		courseG.beginFill(0x2E7D32, 0.4);
+		courseG.drawRect(COURSE_RIGHT - fringeW, COURSE_TOP, fringeW, COURSE_BOTTOM - COURSE_TOP);
+		courseG.endFill();
 
 		// Edge shadow (inner)
 		courseG.beginFill(0x000000, 0.15);
@@ -404,20 +517,38 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		}
 	}
 
+	// Subtask 6: Improved obstacle visuals with rounded look and better shading
 	function drawObstacles():Void {
 		obstacleG.clear();
 		for (w in walls) {
-			// Shadow
+			var cornerR = 3.0;
+
+			// Shadow (offset)
 			obstacleG.beginFill(0x000000, 0.3);
 			obstacleG.drawRect(w.x + 2, w.y + 2, w.w, w.h);
 			obstacleG.endFill();
-			// Wall body
+
+			// Main body
 			obstacleG.beginFill(0x5D4037);
 			obstacleG.drawRect(w.x, w.y, w.w, w.h);
 			obstacleG.endFill();
-			// Highlight
-			obstacleG.beginFill(0x8D6E63, 0.5);
+
+			// Rounded corners (circle caps)
+			obstacleG.beginFill(0x5D4037);
+			obstacleG.drawCircle(w.x + cornerR, w.y + cornerR, cornerR);
+			obstacleG.drawCircle(w.x + w.w - cornerR, w.y + cornerR, cornerR);
+			obstacleG.drawCircle(w.x + cornerR, w.y + w.h - cornerR, cornerR);
+			obstacleG.drawCircle(w.x + w.w - cornerR, w.y + w.h - cornerR, cornerR);
+			obstacleG.endFill();
+
+			// Top highlight (lighter brown)
+			obstacleG.beginFill(0xA1887F, 0.6);
 			obstacleG.drawRect(w.x, w.y, w.w, 2);
+			obstacleG.endFill();
+
+			// Bottom shadow (darker)
+			obstacleG.beginFill(0x3E2723, 0.5);
+			obstacleG.drawRect(w.x, w.y + w.h - 2, w.w, 2);
 			obstacleG.endFill();
 		}
 	}
@@ -435,6 +566,7 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		courseG.beginFill(0x1A1A1A, 0.8);
 		courseG.drawCircle(holeX, holeY, HOLE_RADIUS - 2);
 		courseG.endFill();
+
 		// Flag pole
 		var flagX = holeX + 2;
 		var flagBottom = holeY;
@@ -443,10 +575,17 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		courseG.moveTo(flagX, flagBottom);
 		courseG.lineTo(flagX, flagTop);
 		courseG.lineStyle();
+
+		// Subtask 10: Flag wave animation
+		var waveOffset = 0.0;
+		if (flagWaveTimer > 0) {
+			waveOffset = Math.sin(flagWaveTimer * 12) * 4;
+		}
+
 		// Flag triangle
 		courseG.beginFill(0xFF3333);
 		courseG.moveTo(flagX, flagTop);
-		courseG.lineTo(flagX + 14, flagTop + 5);
+		courseG.lineTo(flagX + 14 + waveOffset, flagTop + 5);
 		courseG.lineTo(flagX, flagTop + 10);
 		courseG.lineTo(flagX, flagTop);
 		courseG.endFill();
@@ -454,7 +593,7 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 
 	function drawBall(dt:Float):Void {
 		ballG.clear();
-		if (ballSunk && sinkAnimTimer > 0.5) return; // hide after sink
+		if (ballSunk && sinkAnimTimer > 0.5) return;
 
 		ballPulse += dt * 3.0;
 		var pulse = Math.sin(ballPulse) * 0.5 + 0.5;
@@ -488,6 +627,16 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		ballG.drawCircle(bx - r * 0.25, by - r * 0.3, r * 0.4);
 		ballG.endFill();
 
+		// Subtask 7: Ball roll dimple
+		var speed = Math.sqrt(ballVX * ballVX + ballVY * ballVY);
+		if (speed > STOP_THRESHOLD && !ballSunk) {
+			var dimpleX = bx + Math.cos(ballRollAngle) * r * 0.4;
+			var dimpleY = by + Math.sin(ballRollAngle) * r * 0.4;
+			ballG.beginFill(0xCCCCCC, 0.6);
+			ballG.drawCircle(dimpleX, dimpleY, r * 0.2);
+			ballG.endFill();
+		}
+
 		// Aiming glow when not moving
 		if (!ballMoving && !ballSunk && !gameOver) {
 			var glowAlpha = 0.15 + 0.1 * pulse;
@@ -499,17 +648,35 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 
 	function drawAimLine():Void {
 		aimG.clear();
-		if (!dragging) return;
+		if (!dragging) {
+			powerText.alpha = 0;
+			return;
+		}
 
 		var dx = dragStartX - dragCurrentX;
 		var dy = dragStartY - dragCurrentY;
 		var dist = Math.sqrt(dx * dx + dy * dy);
-		if (dist < 10) return;
+		if (dist < MIN_DRAG) {
+			powerText.alpha = 0;
+			return;
+		}
 
 		var power = Math.min(dist * DRAG_SCALE, MAX_POWER);
 		var powerRatio = power / MAX_POWER;
 		var nx = dx / dist;
 		var ny = dy / dist;
+
+		// Subtask 3: Anchor ring on ball (pulsing)
+		var anchorPulse = Math.sin(totalTime * 8) * 0.3 + 0.7;
+		aimG.lineStyle(1.5, 0xFFDD44, 0.5 * anchorPulse);
+		aimG.drawCircle(ballX, ballY, BALL_RADIUS + 6);
+		aimG.lineStyle();
+
+		// Subtask 3: Pull-back line (faint line from drag point to ball)
+		aimG.lineStyle(1, 0xFFFFFF, 0.15);
+		aimG.moveTo(dragCurrentX, dragCurrentY);
+		aimG.lineTo(ballX, ballY);
+		aimG.lineStyle();
 
 		// Direction line (dotted)
 		var lineLen = 30 + powerRatio * 80;
@@ -538,17 +705,31 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		aimG.lineTo(tipX, tipY);
 		aimG.endFill();
 
-		// Power bar (small, near ball)
-		var barX = ballX + 20;
-		var barY = ballY - 20;
-		var barW = 40.0;
-		var barH = 5.0;
-		aimG.beginFill(0x000000, 0.4);
-		aimG.drawRect(barX, barY, barW, barH);
+		// Subtask 11: Power bar at bottom of screen
+		var barW = 200.0;
+		var barH = 8.0;
+		var barX = (DESIGN_W - barW) / 2;
+		var barY2 = 585.0;
+
+		// Background panel
+		aimG.beginFill(0x000000, 0.5);
+		aimG.drawRect(barX - 4, barY2 - 3, barW + 8, barH + 6);
 		aimG.endFill();
+
+		// Bar background
+		aimG.beginFill(0x222222, 0.8);
+		aimG.drawRect(barX, barY2, barW, barH);
+		aimG.endFill();
+
+		// Bar fill
 		aimG.beginFill(powerColor(powerRatio), 0.9);
-		aimG.drawRect(barX, barY, barW * powerRatio, barH);
+		aimG.drawRect(barX, barY2, barW * powerRatio, barH);
 		aimG.endFill();
+
+		// Subtask 11: Power percentage text
+		var pct = Std.int(powerRatio * 100);
+		powerText.text = pct + "%";
+		powerText.alpha = 0.8;
 	}
 
 	function powerColor(ratio:Float):Int {
@@ -557,37 +738,83 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		return 0xFF4444;
 	}
 
+	// Subtask 8: Improved trail with larger dots, longer lifetime, gradient sizing
 	function drawTrail():Void {
-		// Draw ball trail as fading dots
 		for (t in trail) {
-			var alpha = Math.max(0, 1.0 - t.age * 4.0) * 0.3;
+			var lifeRatio = t.age / 0.6;
+			var alpha = Math.max(0, 1.0 - lifeRatio) * 0.4;
 			if (alpha > 0) {
-				ballG.beginFill(0xFFFFFF, alpha);
-				ballG.drawCircle(t.x, t.y, BALL_RADIUS * 0.4 * (1.0 - t.age * 3.0));
-				ballG.endFill();
+				var size = BALL_RADIUS * 0.5 * (1.0 - lifeRatio);
+				if (size > 0) {
+					ballG.beginFill(0xFFFFFF, alpha);
+					ballG.drawCircle(t.x, t.y, size);
+					ballG.endFill();
+				}
 			}
 		}
 	}
 
+	// Subtask 12: Improved stroke display with larger dots, label, background panel
 	function drawUI():Void {
 		uiG.clear();
 
-		// Timer / progress bar at top
 		var barY = 105;
-		var barH = 4;
-		var barW = DESIGN_W - 40;
-		// Strokes remaining indicator
 		var remaining = maxStrokes - strokes;
+
+		// Background panel behind stroke info
+		var panelW = maxStrokes * 20 + 70;
+		uiG.beginFill(0x000000, 0.3);
+		uiG.drawRect(14, barY - 6, panelW, 24);
+		uiG.endFill();
+
+		// Stroke dots (larger, radius 7)
 		for (i in 0...maxStrokes) {
-			var dotX = 20 + i * 16;
+			var dotX = 22 + i * 20;
 			var dotColor = i < remaining ? 0xFFDD44 : 0x333355;
-			uiG.beginFill(dotColor, 0.8);
-			uiG.drawCircle(dotX + 5, barY + 2, 4);
+			uiG.beginFill(dotColor, 0.9);
+			uiG.drawCircle(dotX, barY + 5, 7);
 			uiG.endFill();
+			// Inner ring for used strokes
+			if (i >= remaining) {
+				uiG.lineStyle(1, 0x555577, 0.4);
+				uiG.drawCircle(dotX, barY + 5, 7);
+				uiG.lineStyle();
+			}
 		}
 
-		// "STROKES" label
-		var labelX = 20 + maxStrokes * 16 + 8;
+		// STROKES label position update
+		strokeLabel.x = 22 + maxStrokes * 20 + 5;
+		strokeLabel.y = barY - 2;
+	}
+
+	// Subtask 9: Spawn confetti particles
+	function spawnConfetti(cx:Float, cy:Float, count:Int, intensity:Float):Void {
+		var colors = [0xFFDD44, 0xFFFFFF, 0x44DD66, 0xFF3333];
+		for (i in 0...count) {
+			var angle = (rng.random(360)) * Math.PI / 180;
+			var speed = (80 + rng.random(120)) * intensity;
+			confetti.push({
+				x: cx,
+				y: cy,
+				vx: Math.cos(angle) * speed,
+				vy: -Math.abs(Math.sin(angle) * speed) - 50 * intensity,
+				color: colors[rng.random(colors.length)],
+				life: 1.0,
+				size: 2 + rng.random(3)
+			});
+		}
+	}
+
+	// Subtask 9: Draw confetti particles
+	function drawConfetti():Void {
+		confettiG.clear();
+		for (p in confetti) {
+			if (p.life > 0) {
+				confettiG.beginFill(p.color, p.life * 0.8);
+				confettiG.drawRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+				confettiG.endFill();
+			}
+		}
 	}
 
 	public function setOnLose(c:MinigameContext) {
@@ -601,7 +828,12 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		hole = 0;
 		totalTime = 0;
 		ballPulse = 0;
+		ballRollAngle = 0;
+		flagWaveTimer = 0;
+		resultBounceTimer = 0;
+		confetti = [];
 		hintText.alpha = 1.0;
+		powerText.alpha = 0;
 		setupHole(0);
 	}
 
@@ -611,7 +843,6 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 
 		// Ball physics
 		if (ballMoving && !ballSunk) {
-			// Update trail
 			trail.push({x: ballX, y: ballY, age: 0});
 
 			ballX += ballVX * dt;
@@ -644,11 +875,30 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 				collideWall(w);
 			}
 
+			// Subtask 2: Hole gravity lip effect
+			var hdx = holeX - ballX;
+			var hdy = holeY - ballY;
+			var distToHole = Math.sqrt(hdx * hdx + hdy * hdy);
+			var speed = Math.sqrt(ballVX * ballVX + ballVY * ballVY);
+
+			if (distToHole < HOLE_RADIUS * 2 && speed < 100 && distToHole > 0) {
+				var pullStrength = 40.0;
+				var ndx = hdx / distToHole;
+				var ndy = hdy / distToHole;
+				ballVX += ndx * pullStrength * dt;
+				ballVY += ndy * pullStrength * dt;
+			}
+
+			// Subtask 7: Update ball roll angle
+			if (speed > STOP_THRESHOLD) {
+				ballRollAngle += speed * dt * 0.05;
+			}
+
 			// Check if ball is in the hole
 			var dx = ballX - holeX;
 			var dy = ballY - holeY;
-			var distToHole = Math.sqrt(dx * dx + dy * dy);
-			var speed = Math.sqrt(ballVX * ballVX + ballVY * ballVY);
+			distToHole = Math.sqrt(dx * dx + dy * dy);
+			speed = Math.sqrt(ballVX * ballVX + ballVY * ballVY);
 
 			if (distToHole < HOLE_RADIUS - BALL_RADIUS * 0.3 && speed < SINK_SPEED_MAX) {
 				// Ball sinks!
@@ -658,8 +908,22 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 				var holeScore = strokes == 1 ? 100 : (strokes == 2 ? 50 : 25);
 				score += holeScore;
 
-				if (ctx != null && ctx.feedback != null)
+				// Subtask 10: Enhanced sink feedback
+				if (ctx != null && ctx.feedback != null) {
 					ctx.feedback.flash(0xFFDD44, 0.2);
+					if (strokes == 1) {
+						// Hole-in-one: bigger effects
+						spawnConfetti(holeX, holeY, 25, 1.5);
+						ctx.feedback.shake2D(0.3, 5);
+						ctx.feedback.zoom2D(1.05, 0.15);
+					} else {
+						spawnConfetti(holeX, holeY, 15, 1.0);
+						ctx.feedback.shake2D(0.2, 3);
+					}
+				}
+
+				flagWaveTimer = 1.0;
+				resultBounceTimer = 0.3;
 
 				showResult(strokes == 1 ? "HOLE IN ONE!" : (strokes == 2 ? "NICE PUTT!" : "IN!"));
 			}
@@ -670,7 +934,6 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 				ballVY = 0;
 				ballMoving = false;
 
-				// Check if out of strokes
 				if (!ballSunk && strokes >= maxStrokes) {
 					gameOver = true;
 					showResult("OUT OF STROKES");
@@ -696,7 +959,7 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 			}
 		}
 
-		// Game over delay — show result for 1.5s then end
+		// Game over delay
 		if (gameOver) {
 			gameOverTimer += dt;
 			if (gameOverTimer > 1.5) {
@@ -708,11 +971,39 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 			}
 		}
 
-		// Fade trail
+		// Subtask 10: Flag wave timer countdown
+		if (flagWaveTimer > 0) {
+			flagWaveTimer -= dt;
+			if (flagWaveTimer < 0) flagWaveTimer = 0;
+		}
+
+		// Subtask 10: Result bounce timer
+		if (resultBounceTimer > 0) {
+			resultBounceTimer -= dt;
+			if (resultBounceTimer < 0) resultBounceTimer = 0;
+			var bounceScale = 2.0 + resultBounceTimer * 2.0;
+			resultText.setScale(bounceScale);
+		}
+
+		// Subtask 9: Update confetti physics
+		var ci = confetti.length - 1;
+		while (ci >= 0) {
+			var p = confetti[ci];
+			p.x += p.vx * dt;
+			p.y += p.vy * dt;
+			p.vy += 300 * dt; // gravity
+			p.life -= dt;
+			if (p.life <= 0) {
+				confetti.splice(ci, 1);
+			}
+			ci--;
+		}
+
+		// Subtask 8: Fade trail (0.6s lifetime)
 		var i = trail.length - 1;
 		while (i >= 0) {
 			trail[i].age += dt;
-			if (trail[i].age > 0.4) {
+			if (trail[i].age > 0.6) {
 				trail.splice(i, 1);
 			}
 			i--;
@@ -731,6 +1022,7 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		drawBall(dt);
 		drawAimLine();
 		drawUI();
+		drawConfetti();
 
 		scoreText.text = Std.string(score);
 
@@ -741,7 +1033,6 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	}
 
 	function collideWall(w:Wall):Void {
-		// AABB collision with ball
 		var closestX = Math.max(w.x, Math.min(ballX, w.x + w.w));
 		var closestY = Math.max(w.y, Math.min(ballY, w.y + w.h));
 		var dx = ballX - closestX;
@@ -749,9 +1040,7 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		var dist = Math.sqrt(dx * dx + dy * dy);
 
 		if (dist < BALL_RADIUS) {
-			// Push ball out and reflect
 			if (dist == 0) {
-				// Ball center is inside wall
 				ballX = w.x - BALL_RADIUS;
 				ballVX = -Math.abs(ballVX) * WALL_BOUNCE;
 				return;
@@ -762,7 +1051,6 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 			ballX += nx * overlap;
 			ballY += ny * overlap;
 
-			// Reflect velocity
 			var dot = ballVX * nx + ballVY * ny;
 			if (dot < 0) {
 				ballVX -= 2 * dot * nx;
@@ -777,6 +1065,7 @@ class GolfPutt implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		resultText.text = text;
 		resultText.alpha = 0.01;
 		resultText.textColor = 0x44DD66;
+		resultText.setScale(2.0);
 		if (text == "OUT OF STROKES") resultText.textColor = 0xFF4444;
 	}
 
