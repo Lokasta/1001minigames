@@ -12,7 +12,7 @@ import core.IMinigameUpdatable;
 
 /**
 	Sliding Puzzle (15-puzzle): organize os números deslizando peças.
-	Grid 4x4, 15 peças + 1 espaço vazio. Toque na peça adjacente ao espaço para mover.
+	Grid 4x4, 15 peças + 1 espaço vazio. Toque na peça adjacente ao espapara mover.
 	Score = número de movimentos (menos = melhor). Timer conta o tempo.
 	Game over quando completa o puzzle (ou desiste por timeout).
 **/
@@ -24,8 +24,9 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 	static var TILE_GAP = 4;
 	static var BOARD_PAD = 6;
 	static var TIME_LIMIT = 120.0; // 2 min
-	static var WIN_DELAY = 1.0;
+	static var WIN_DELAY = 2.0;
 	static var SWIPE_THRESHOLD = 15;
+	static var ANIM_DURATION = 0.12;
 
 	final contentObj:Object;
 	var ctx:MinigameContext;
@@ -40,7 +41,13 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 	var titleText:Text;
 	var hintText:Text;
 	var winText:Text;
+	var statsText:Text;
+	var timeoutText:Text;
 	var interactive:Interactive;
+
+	// Pre-allocated tile text objects (15 tiles)
+	var tileTexts:Array<Text>;
+	var tileShadows:Array<Text>;
 
 	// State
 	var board:Array<Int>; // flat 16 cells, 0 = empty, 1-15 = tile number
@@ -51,6 +58,21 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 	var won:Bool;
 	var winTimer:Float;
 	var started:Bool;
+
+	// Animation state
+	var animating:Bool;
+	var animTileVal:Int;
+	var animFromX:Float;
+	var animFromY:Float;
+	var animToX:Float;
+	var animToY:Float;
+	var animProgress:Float;
+
+	// Hint fade
+	var hintFadeTimer:Float;
+
+	// Timeout delay
+	var timeoutTimer:Float;
 
 	// Input
 	var touchStartX:Float;
@@ -102,8 +124,8 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 		movesText.text = "Movimentos: 0";
 		movesText.x = 20;
 		movesText.y = 70;
-		movesText.scale(1.1);
-		movesText.textColor = 0x7F8C8D;
+		movesText.scale(1.3);
+		movesText.textColor = 0x2C3E50;
 
 		timerText = new Text(hxd.res.DefaultFont.get(), contentObj);
 		timerText.text = "2:00";
@@ -130,9 +152,49 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 		winText.textColor = 0x27AE60;
 		winText.visible = false;
 
+		statsText = new Text(hxd.res.DefaultFont.get(), contentObj);
+		statsText.text = "";
+		statsText.x = DESIGN_W / 2;
+		statsText.y = boardY + boardSize / 2 + 28;
+		statsText.scale(1.3);
+		statsText.textAlign = Center;
+		statsText.textColor = 0x2C3E50;
+		statsText.visible = false;
+
+		timeoutText = new Text(hxd.res.DefaultFont.get(), contentObj);
+		timeoutText.text = "Tempo esgotado!";
+		timeoutText.x = DESIGN_W / 2;
+		timeoutText.y = boardY + boardSize / 2 - 12;
+		timeoutText.scale(2.5);
+		timeoutText.textAlign = Center;
+		timeoutText.textColor = 0xE74C3C;
+		timeoutText.visible = false;
+
+		// Pre-allocate tile text objects (shadows first so they render behind)
+		tileTexts = [];
+		tileShadows = [];
+		for (i in 0...15) {
+			var shadow = new Text(hxd.res.DefaultFont.get(), tilesG);
+			shadow.textAlign = Center;
+			shadow.textColor = 0x000000;
+			shadow.alpha = 0.15;
+			shadow.visible = false;
+			tileShadows.push(shadow);
+
+			var txt = new Text(hxd.res.DefaultFont.get(), tilesG);
+			txt.textAlign = Center;
+			txt.textColor = 0xFFFFFF;
+			txt.visible = false;
+			tileTexts.push(txt);
+		}
+
+		animating = false;
+		hintFadeTimer = -1;
+		timeoutTimer = -1;
+
 		interactive = new Interactive(DESIGN_W, DESIGN_H, contentObj);
 		interactive.onPush = function(e:Event) {
-			if (gameOver) return;
+			if (gameOver || animating) return;
 			touchStartX = e.relX;
 			touchStartY = e.relY;
 			touchDown = true;
@@ -143,7 +205,7 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 	}
 
 	function onTouchEnd(e:Event) {
-		if (!touchDown || gameOver) return;
+		if (!touchDown || gameOver || animating) return;
 		touchDown = false;
 
 		var dx = e.relX - touchStartX;
@@ -192,6 +254,7 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 	}
 
 	function trySlide(idx:Int) {
+		if (animating) return;
 		if (board[idx] == 0) return; // tapped empty cell
 
 		// Check if adjacent to empty
@@ -203,9 +266,21 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 		var adjacent = (row == eRow && Math.abs(col - eCol) == 1) || (col == eCol && Math.abs(row - eRow) == 1);
 		if (!adjacent) return;
 
-		if (!started) started = true;
+		if (!started) {
+			started = true;
+			hintFadeTimer = 0;
+		}
 
-		// Swap
+		// Compute pixel positions before and after
+		animFromX = boardX + BOARD_PAD + TILE_GAP + col * (TILE_SIZE + TILE_GAP);
+		animFromY = boardY + BOARD_PAD + TILE_GAP + row * (TILE_SIZE + TILE_GAP);
+		animToX = boardX + BOARD_PAD + TILE_GAP + eCol * (TILE_SIZE + TILE_GAP);
+		animToY = boardY + BOARD_PAD + TILE_GAP + eRow * (TILE_SIZE + TILE_GAP);
+		animTileVal = board[idx];
+		animProgress = 0;
+		animating = true;
+
+		// Swap board array immediately (for logic)
 		board[emptyIdx] = board[idx];
 		board[idx] = 0;
 		emptyIdx = idx;
@@ -215,14 +290,30 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 		if (ctx != null && ctx.feedback != null)
 			ctx.feedback.flash(0.03);
 
-		// Check win
+		drawTiles();
+	}
+
+	function finishAnimation() {
+		animating = false;
+
+		// Check win after animation completes
 		if (isSolved()) {
 			won = true;
 			gameOver = true;
 			winTimer = 0;
 			winText.visible = true;
-			if (ctx != null && ctx.feedback != null)
+			winText.alpha = 0;
+			winText.setScale(0.5 * 2.8);
+			statsText.visible = true;
+			statsText.alpha = 0;
+			var timeLeft = TIME_LIMIT - elapsed;
+			var mins = Std.int(timeLeft / 60);
+			var secs = Std.int(timeLeft) % 60;
+			statsText.text = Std.string(moves) + " movimentos | " + Std.string(mins) + ":" + (secs < 10 ? "0" : "") + Std.string(secs) + "s";
+			if (ctx != null && ctx.feedback != null) {
 				ctx.feedback.shake2D(0.2, 4);
+				ctx.feedback.flash(0.15);
+			}
 		}
 
 		drawTiles();
@@ -269,6 +360,7 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 	function drawAll() {
 		drawBg();
 		drawBoard();
+		drawUI();
 		drawTiles();
 	}
 
@@ -317,11 +409,33 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 		}
 	}
 
+	function drawUI() {
+		uiG.clear();
+		// Background pill behind moves text
+		uiG.beginFill(0x000000, 0.12);
+		uiG.drawRoundedRect(movesText.x - 6, movesText.y - 3, 155, 22, 6);
+		uiG.endFill();
+		// Background pill behind timer text (right-aligned, so pill extends left)
+		uiG.beginFill(0x000000, 0.12);
+		uiG.drawRoundedRect(DESIGN_W - 20 - 74, timerText.y - 3, 80, 22, 6);
+		uiG.endFill();
+		// Clock icon (small circle with hands)
+		var cIconX = DESIGN_W - 20 - 66;
+		var cIconY = timerText.y + 8;
+		uiG.lineStyle(1.5, 0x2C3E50, 0.6);
+		uiG.drawCircle(cIconX, cIconY, 6);
+		uiG.lineStyle();
+		// Clock hands
+		uiG.beginFill(0x2C3E50, 0.6);
+		uiG.drawRect(cIconX - 0.5, cIconY - 4, 1, 4);
+		uiG.drawRect(cIconX, cIconY - 0.5, 3, 1);
+		uiG.endFill();
+	}
+
 	function drawTiles() {
 		tilesG.clear();
-		while (tilesG.numChildren > 0)
-			tilesG.getChildAt(0).remove();
 
+		var textIdx = 0;
 		for (r in 0...GRID) {
 			for (c in 0...GRID) {
 				var idx = r * GRID + c;
@@ -331,8 +445,23 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 				var cx = boardX + BOARD_PAD + TILE_GAP + c * (TILE_SIZE + TILE_GAP);
 				var cy = boardY + BOARD_PAD + TILE_GAP + r * (TILE_SIZE + TILE_GAP);
 
+				// If this tile is being animated, use lerped position with ease-out
+				if (animating && val == animTileVal) {
+					var t = animProgress / ANIM_DURATION;
+					if (t > 1.0) t = 1.0;
+					// Ease-out: t = 1 - (1 - t)^2
+					var eased = 1.0 - (1.0 - t) * (1.0 - t);
+					cx = animFromX + (animToX - animFromX) * eased;
+					cy = animFromY + (animToY - animFromY) * eased;
+				}
+
 				var color = TILE_COLORS[(val - 1) % TILE_COLORS.length];
 				var isCorrect = (val == idx + 1);
+
+				// Win flash: green overlay during first 0.3s of win
+				if (won && winTimer < 0.3) {
+					color = 0x27AE60;
+				}
 
 				// Tile shadow
 				tilesG.beginFill(0x000000, 0.12);
@@ -354,35 +483,45 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 				tilesG.drawRoundedRect(cx + 2, cy + TILE_SIZE - 5, TILE_SIZE - 4, 4, 3);
 				tilesG.endFill();
 
-				// Correct position indicator (subtle glow)
-				if (isCorrect) {
-					tilesG.beginFill(0xFFFFFF, 0.08);
-					tilesG.drawRoundedRect(cx - 1, cy - 1, TILE_SIZE + 2, TILE_SIZE + 2, 7);
+				// Correct position indicator: green dot at top-right corner
+				if (isCorrect && !won) {
+					tilesG.beginFill(0x27AE60, 0.9);
+					tilesG.drawCircle(cx + TILE_SIZE - 10, cy + 10, 5);
+					tilesG.endFill();
+					// White inner dot
+					tilesG.beginFill(0xFFFFFF, 0.9);
+					tilesG.drawCircle(cx + TILE_SIZE - 10, cy + 10, 2);
 					tilesG.endFill();
 				}
 
-				// Number
-				var txt = new Text(hxd.res.DefaultFont.get(), tilesG);
-				txt.text = Std.string(val);
-				txt.textAlign = Center;
-				txt.textColor = 0xFFFFFF;
-				var sc = if (val >= 10) 2.0 else 2.4;
-				txt.scale(sc);
-				txt.x = cx + TILE_SIZE / 2;
-				txt.y = cy + TILE_SIZE / 2 - 6 * sc;
+				// Position pre-allocated text objects
+				if (textIdx < 15) {
+					var sc = if (val >= 10) 2.0 else 2.4;
 
-				// Text shadow
-				var shadow = new Text(hxd.res.DefaultFont.get(), tilesG);
-				shadow.text = Std.string(val);
-				shadow.textAlign = Center;
-				shadow.textColor = 0x000000;
-				shadow.alpha = 0.15;
-				shadow.scale(sc);
-				shadow.x = cx + TILE_SIZE / 2 + 1;
-				shadow.y = cy + TILE_SIZE / 2 - 6 * sc + 1;
-				// Move shadow behind number - swap draw order
-				tilesG.addChildAt(shadow, tilesG.numChildren - 2);
+					var shadow = tileShadows[textIdx];
+					shadow.text = Std.string(val);
+					shadow.setScale(sc);
+					shadow.x = cx + TILE_SIZE / 2 + 1;
+					shadow.y = cy + TILE_SIZE / 2 - 6 * sc + 1;
+					shadow.visible = true;
+
+					var txt = tileTexts[textIdx];
+					txt.text = Std.string(val);
+					txt.setScale(sc);
+					txt.x = cx + TILE_SIZE / 2;
+					txt.y = cy + TILE_SIZE / 2 - 6 * sc;
+					txt.visible = true;
+
+					textIdx++;
+				}
 			}
+		}
+
+		// Hide unused text objects
+		while (textIdx < 15) {
+			tileTexts[textIdx].visible = false;
+			tileShadows[textIdx].visible = false;
+			textIdx++;
 		}
 	}
 
@@ -408,10 +547,18 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 		winTimer = -1;
 		started = false;
 		touchDown = false;
+		animating = false;
+		hintFadeTimer = -1;
+		timeoutTimer = -1;
 		flashG.clear();
 		winText.visible = false;
+		statsText.visible = false;
+		timeoutText.visible = false;
+		hintText.visible = true;
+		hintText.alpha = 1.0;
 		movesText.text = "Movimentos: 0";
 		timerText.text = formatTime(TIME_LIMIT);
+		timerText.textColor = 0x2C3E50;
 		drawAll();
 	}
 
@@ -430,14 +577,57 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 	public function update(dt:Float) {
 		if (ctx == null) return;
 
+		// Advance tile animation
+		if (animating) {
+			animProgress += dt;
+			if (animProgress >= ANIM_DURATION) {
+				finishAnimation();
+			} else {
+				drawTiles();
+			}
+		}
+
+		// Hint text fade-out after first move
+		if (hintFadeTimer >= 0 && hintText.visible) {
+			hintFadeTimer += dt;
+			hintText.alpha = Math.max(1.0 - hintFadeTimer / 0.5, 0);
+			if (hintFadeTimer >= 0.5) {
+				hintText.visible = false;
+			}
+		}
+
 		if (gameOver) {
 			if (won) {
 				winTimer += dt;
+				// Scale animation: 0.5 -> 1.0 over 0.4s with ease-out
+				var scaleProgress = Math.min(winTimer / 0.4, 1.0);
+				var eased = 1.0 - (1.0 - scaleProgress) * (1.0 - scaleProgress);
+				var currentScale = 0.5 + 0.5 * eased;
+				winText.setScale(2.8 * currentScale);
 				winText.alpha = Math.min(winTimer / 0.3, 1.0);
+				statsText.alpha = Math.max(0, Math.min((winTimer - 0.3) / 0.3, 1.0));
+
+				// Redraw tiles for green flash effect (first 0.3s)
+				if (winTimer < 0.3) {
+					drawTiles();
+				}
+
 				if (winTimer >= WIN_DELAY) {
 					// Score: higher is better — reward fewer moves and more time left
 					var timeLeft = TIME_LIMIT - elapsed;
 					var finalScore = Std.int(Math.max(1000 - moves * 5 + timeLeft * 3, 10));
+					ctx.lose(finalScore, getMinigameId());
+					ctx = null;
+				}
+			} else {
+				// Timeout state
+				timeoutTimer += dt;
+				timeoutText.alpha = Math.min(timeoutTimer / 0.3, 1.0);
+				if (timeoutTimer >= 1.5) {
+					var correct = 0;
+					for (i in 0...15)
+						if (board[i] == i + 1) correct++;
+					var finalScore = correct * 20 + Std.int(Math.max(200 - moves, 0));
 					ctx.lose(finalScore, getMinigameId());
 					ctx = null;
 				}
@@ -450,17 +640,20 @@ class SlidingPuzzle implements IMinigameSceneWithLose implements IMinigameUpdata
 			var remaining = TIME_LIMIT - elapsed;
 			if (remaining <= 0) {
 				remaining = 0;
+				// If animating, defer timeout until animation completes
+				if (animating) {
+					elapsed = TIME_LIMIT;
+					timerText.text = "0:00";
+					return;
+				}
 				gameOver = true;
-				winTimer = 0;
+				won = false;
+				timeoutTimer = 0;
+				timeoutText.visible = true;
+				timeoutText.alpha = 0;
 				if (ctx != null && ctx.feedback != null)
 					ctx.feedback.shake2D(0.3, 5);
-				// Time's up — score based on how many tiles are correct
-				var correct = 0;
-				for (i in 0...15)
-					if (board[i] == i + 1) correct++;
-				var finalScore = correct * 20 + Std.int(Math.max(200 - moves, 0));
-				ctx.lose(finalScore, getMinigameId());
-				ctx = null;
+				timerText.text = "0:00";
 				return;
 			}
 			timerText.text = formatTime(remaining);
