@@ -98,7 +98,7 @@ class ScoreScreen extends Object {
 
 		// Home icon button (top-left corner, small house icon)
 		homeBtn = new Graphics(this);
-		homeBtnInteractive = new Interactive(36, 36, this);
+		homeBtnInteractive = new Interactive(48, 48, this);
 		homeBtnInteractive.onClick = function(_) {
 			if (onGoHome != null)
 				onGoHome();
@@ -145,10 +145,10 @@ class ScoreScreen extends Object {
 		hint.y = Std.int(designH * 0.78);
 
 		// Home icon — top-left corner
-		homeBtnInteractive.x = 12;
-		homeBtnInteractive.y = 12;
-		homeBtnInteractive.width = 36;
-		homeBtnInteractive.height = 36;
+		homeBtnInteractive.x = 8;
+		homeBtnInteractive.y = 8;
+		homeBtnInteractive.width = 48;
+		homeBtnInteractive.height = 48;
 	}
 
 	function drawBg():Void {
@@ -314,9 +314,9 @@ class ScoreScreen extends Object {
 		// Home icon (small house) — top-left corner, subtle
 		homeBtn.clear();
 		var homeAlpha = Math.max(0, (ef - 0.5) / 0.5) * 0.5;
-		var hx = 30.0;
-		var hy = 30.0;
-		var hs = 8.0; // house half-size
+		var hx = 32.0;
+		var hy = 32.0;
+		var hs = 11.0; // house half-size
 		// Roof (triangle)
 		homeBtn.lineStyle(1.5, 0xFFFFFF, homeAlpha);
 		homeBtn.moveTo(hx - hs, hy - 1);
