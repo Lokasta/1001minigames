@@ -35,8 +35,11 @@ class GameFlow {
 	var currentMinigame: IMinigameScene = null;
 	var minigameNames: Array<String>;
 	var minigameFactories: Array<Void->IMinigameScene>;
+	var minigameCategories: Array<String>;
+	var minigameTags: Array<Array<String>>;
 	var lastScore: Int = 0;
 	var lastMinigameId: String = "";
+	var lastCategory: String = "";
 
 	var transitionT: Float;
 	var transitioning: Bool;
@@ -64,6 +67,8 @@ class GameFlow {
 		root = new Object(s2d);
 		minigameNames = [];
 		minigameFactories = [];
+		minigameCategories = [];
+		minigameTags = [];
 		transitionT = 0;
 		transitioning = false;
 		transitionSkipOutgoing = false;
@@ -96,9 +101,11 @@ class GameFlow {
 		feedback = new FeedbackManager(s2d, designW, designH, root, s3d);
 	}
 
-	public function registerMinigame(name: String, factory: Void->IMinigameScene) {
+	public function registerMinigame(name: String, factory: Void->IMinigameScene, ?category: String, ?tags: Array<String>) {
 		minigameNames.push(name);
 		minigameFactories.push(factory);
+		minigameCategories.push(category != null ? category : "uncategorized");
+		minigameTags.push(tags != null ? tags : []);
 	}
 
 	function onDebugSelectMinigame(index: Int) {
@@ -188,6 +195,7 @@ class GameFlow {
 		transitionSkipOutgoing = (slideContainer.numChildren == 0);
 
 		var factory = minigameFactories[index];
+		lastCategory = minigameCategories[index];
 		currentMinigame = factory();
 		if (s3d != null && Std.isOfType(currentMinigame, IMinigame3D)) {
 			(cast currentMinigame : IMinigame3D).setScene3D(s3d);
@@ -212,7 +220,20 @@ class GameFlow {
 
 	function startTransitionToNextMinigame() {
 		if (minigameFactories.length == 0) return;
-		startMinigameByIndexInternal(Std.random(minigameFactories.length));
+
+		// Build candidate list excluding games with the same category as last played
+		var candidates = new Array<Int>();
+		for (i in 0...minigameFactories.length) {
+			if (minigameCategories[i] != lastCategory)
+				candidates.push(i);
+		}
+
+		// Fallback: if all games share the same category, allow any game
+		if (candidates.length == 0) {
+			startMinigameByIndexInternal(Std.random(minigameFactories.length));
+		} else {
+			startMinigameByIndexInternal(candidates[Std.random(candidates.length)]);
+		}
 	}
 
 	function finishTransition() {
