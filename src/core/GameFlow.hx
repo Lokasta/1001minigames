@@ -10,6 +10,7 @@ import core.IMinigameUpdatable;
 import core.DebugMenu;
 import core.FeedbackManager;
 import shared.Easing;
+import shared.HighScoreManager;
 
 /**
 	Feed de slides: Start → Minigame → Score → (swipe) → próximo Minigame → ...
@@ -444,7 +445,8 @@ class GameFlow {
 
 		lastScore = score;
 		lastMinigameId = minigameId;
-		scoreScreen.setScore(score, minigameId);
+		var result = HighScoreManager.getInstance().submitScore(minigameId, score);
+		scoreScreen.setScore(score, minigameId, result.highScore, result.isNewRecord);
 		scoreScreen.visible = true;
 		slideContainer.removeChildren();
 		slideContainer.addChild(scoreScreen);
