@@ -35,6 +35,7 @@ class GameFlow {
 	var currentMinigame: IMinigameScene = null;
 	var minigameNames: Array<String>;
 	var minigameFactories: Array<Void->IMinigameScene>;
+	var minigameWeights: Array<Float>;
 	var lastScore: Int = 0;
 	var lastMinigameId: String = "";
 	var lastPlayedIndex: Int = -1;
@@ -65,6 +66,7 @@ class GameFlow {
 		root = new Object(s2d);
 		minigameNames = [];
 		minigameFactories = [];
+		minigameWeights = [];
 		transitionT = 0;
 		transitioning = false;
 		transitionSkipOutgoing = false;
@@ -97,9 +99,10 @@ class GameFlow {
 		feedback = new FeedbackManager(s2d, designW, designH, root, s3d);
 	}
 
-	public function registerMinigame(name: String, factory: Void->IMinigameScene) {
+	public function registerMinigame(name: String, factory: Void->IMinigameScene, weight: Float = 1.0) {
 		minigameNames.push(name);
 		minigameFactories.push(factory);
+		minigameWeights.push(weight < 0 ? 0.0 : weight);
 	}
 
 	function onDebugSelectMinigame(index: Int) {
@@ -216,9 +219,36 @@ class GameFlow {
 	function startTransitionToNextMinigame() {
 		var n = minigameFactories.length;
 		if (n == 0) return;
-		var idx = Std.random(n);
-		while (idx == lastPlayedIndex && n > 1)
-			idx = Std.random(n);
+
+		var totalWeight = 0.0;
+		for (w in minigameWeights)
+			totalWeight += w;
+
+		if (totalWeight <= 0) {
+			var idx = Std.random(n);
+			while (idx == lastPlayedIndex && n > 1)
+				idx = Std.random(n);
+			startMinigameByIndexInternal(idx);
+			return;
+		}
+
+		var idx = -1;
+		var attempts = 0;
+		while (attempts < 20) {
+			var r = Math.random() * totalWeight;
+			for (i in 0...minigameWeights.length) {
+				r -= minigameWeights[i];
+				if (r < 0) {
+					idx = i;
+					break;
+				}
+			}
+			if (idx < 0) idx = n - 1;
+			if (idx != lastPlayedIndex || n <= 1) break;
+			idx = -1;
+			attempts++;
+		}
+		if (idx < 0) idx = Std.random(n);
 		startMinigameByIndexInternal(idx);
 	}
 
