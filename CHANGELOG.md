@@ -1,6 +1,10 @@
 # Changelog
 
+## 2026-03-01
+- **Fix**: Minigame random selection no longer repeats the same game consecutively — tracks last played index and re-rolls when needed
+
 ## 2026-02-28
+- **Feature**: Magical Drop minigame — classic arcade gem puzzle, move player across 7 columns, tap to grab same-colored gems from bottom of column, tap/swipe to throw them up, 3+ matching vertically or horizontally = pop with chain combos, sparkle effects, jester character, new rows push down on timer with speed ramp, 5 gem colors with unique symbols (diamond/circle/star/square/heart)
 - **Feature**: Sliding Puzzle minigame — classic 15-puzzle, 4x4 grid, tap adjacent tile or swipe to slide, colored numbered tiles with correct-position glow, 2-min timer, score based on moves + time left
 - **Feature**: 2048 minigame — 4x4 grid, swipe to slide tiles, equal tiles merge, score = sum of merges, warm color palette matching original 2048, game over when no moves left
 - **UI**: Dino Runner full polish — swipe up to jump, swipe down to duck (timer-based 0.6s), dust particles on jump/land/run, parallax clouds, gradient sky with sun/moon, better dino with tail/arms/spikes, cactus shadows & spines, double cactus clusters at high difficulty, distance-based scoring, near-miss detection, landing squash, speed ramp with ease-out curve
