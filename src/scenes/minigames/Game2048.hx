@@ -5,6 +5,7 @@ import h2d.Graphics;
 import h2d.Text;
 import h2d.Interactive;
 import hxd.Event;
+import hxd.Key;
 import core.IMinigameScene;
 import core.MinigameContext;
 import core.IMinigameSceneWithLose;
@@ -22,21 +23,26 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	static var TILE_SIZE = 72;
 	static var TILE_GAP = 6;
 	static var BOARD_PAD = 8;
-	static var SWIPE_THRESHOLD = 20;
-	static var ANIM_DURATION = 0.10;
-	static var SPAWN_ANIM_DUR = 0.12;
-	static var MERGE_POP_DUR = 0.10;
+	static var SWIPE_THRESHOLD = 32;
+	static var ANIM_DURATION = 0.12;
+	static var SPAWN_ANIM_DUR = 0.15;
+	static var MERGE_POP_DUR = 0.15;
 	static var DEATH_DUR = 0.6;
+	static var DEATH_DELAY = 0.3;
+	static var MAX_PARTICLES = 50;
+	static var FLOAT_TEXT_POOL = 4;
 
 	final contentObj:Object;
 	var ctx:MinigameContext;
 
-	// Graphics
+	// Graphics layers
 	var bgG:Graphics;
 	var boardG:Graphics;
-	var tilesG:Graphics;
+	var tilesContainer:Object;
+	var particlesG:Object;
 	var uiG:Graphics;
 	var flashG:Graphics;
+	var floatTextsG:Object;
 	var scoreText:Text;
 	var bestText:Text;
 	var titleText:Text;
@@ -44,12 +50,13 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	var interactive:Interactive;
 
 	// Grid state
-	var grid:Array<Array<Int>>; // 4x4, 0 = empty
+	var grid:Array<Array<Int>>;
 	var score:Int;
 	var bestScore:Int;
 	var gameOver:Bool;
 	var deathTimer:Float;
-	var moved:Bool;
+	// Persistent tile objects: tileObjects[r][c] = {obj, gfx, txt} or null
+	var tileObjects:Array<Array<TileObj>>;
 
 	// Input
 	var touchStartX:Float;
@@ -58,6 +65,28 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 
 	// Animation
 	var animating:Bool;
+	var animPhase:AnimPhase;
+	var slideAnims:Array<SlideAnim>;
+	var popAnims:Array<PopAnim>;
+	var pendingMerges:Array<MergeInfo>;
+	var pendingSpawn:{r:Int, c:Int};
+	var pendingGameOver:Bool;
+	var pendingMergeScore:Int;
+
+	// Particles
+	var particles:Array<ParticleData>;
+	var particlePool:Array<Graphics>;
+
+	// Floating score texts
+	var floatingTexts:Array<FloatText>;
+	var floatTextPool:Array<Text>;
+
+	// Score pulse
+	var scorePulseTimer:Float;
+	var scoreBaseScale:Float;
+
+	// Invalid shake
+	var invalidShakeTimer:Float;
 
 	// Board position
 	var boardX:Float;
@@ -74,6 +103,7 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		contentObj.visible = false;
 		grid = [for (_ in 0...GRID_SIZE) [for (_ in 0...GRID_SIZE) 0]];
 		bestScore = 0;
+		scoreBaseScale = 1.4;
 
 		boardSize = GRID_SIZE * TILE_SIZE + (GRID_SIZE + 1) * TILE_GAP + BOARD_PAD * 2;
 		boardX = (DESIGN_W - boardSize) / 2;
@@ -81,8 +111,10 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 
 		bgG = new Graphics(contentObj);
 		boardG = new Graphics(contentObj);
-		tilesG = new Graphics(contentObj);
+		tilesContainer = new Object(contentObj);
+		particlesG = new Object(contentObj);
 		uiG = new Graphics(contentObj);
+		floatTextsG = new Object(contentObj);
 		flashG = new Graphics(contentObj);
 
 		titleText = new Text(hxd.res.DefaultFont.get(), contentObj);
@@ -96,7 +128,7 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		scoreText.text = "0";
 		scoreText.x = DESIGN_W - 20;
 		scoreText.y = 35;
-		scoreText.scale(1.4);
+		scoreText.scale(scoreBaseScale);
 		scoreText.textAlign = Right;
 		scoreText.textColor = 0xEEE4DA;
 
@@ -127,6 +159,37 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		};
 		interactive.onRelease = onTouchEnd;
 		interactive.onReleaseOutside = onTouchEnd;
+
+		// Init tile objects array
+		tileObjects = [for (_ in 0...GRID_SIZE) [for (_ in 0...GRID_SIZE) null]];
+
+		// Init animation arrays
+		slideAnims = [];
+		popAnims = [];
+		pendingMerges = [];
+		animPhase = Idle;
+
+		// Init particles
+		particles = [];
+		particlePool = [];
+		for (_ in 0...MAX_PARTICLES) {
+			var g = new Graphics(particlesG);
+			g.visible = false;
+			particlePool.push(g);
+		}
+
+		// Init floating texts
+		floatingTexts = [];
+		floatTextPool = [];
+		for (_ in 0...FLOAT_TEXT_POOL) {
+			var t = new Text(hxd.res.DefaultFont.get(), floatTextsG);
+			t.visible = false;
+			t.textAlign = Center;
+			floatTextPool.push(t);
+		}
+
+		scorePulseTimer = -1;
+		invalidShakeTimer = -1;
 	}
 
 	function onTouchEnd(e:Event) {
@@ -136,7 +199,7 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		var dy = e.relY - touchStartY;
 		if (Math.abs(dx) < SWIPE_THRESHOLD && Math.abs(dy) < SWIPE_THRESHOLD) return;
 
-		var dir:Int; // 0=up, 1=right, 2=down, 3=left
+		var dir:Int;
 		if (Math.abs(dx) > Math.abs(dy)) {
 			dir = dx > 0 ? 1 : 3;
 		} else {
@@ -146,46 +209,10 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		e.propagate = false;
 	}
 
-	// ── Grid Logic ───────────────────────────────────────────────
-
-	function tryMove(dir:Int) {
-		// Save old grid for animation
-		var oldGrid = [for (r in 0...GRID_SIZE) [for (c in 0...GRID_SIZE) grid[r][c]]];
-		var mergedScore = doMove(dir);
-
-		// Check if anything changed
-		var changed = false;
-		for (r in 0...GRID_SIZE)
-			for (c in 0...GRID_SIZE)
-				if (grid[r][c] != oldGrid[r][c]) changed = true;
-
-		if (!changed) return;
-
-		score += mergedScore;
-		scoreText.text = Std.string(score);
-
-		// Feedback on merge
-		if (mergedScore > 0 && ctx != null && ctx.feedback != null) {
-			if (mergedScore >= 64)
-				ctx.feedback.shake2D(0.12, 3);
-		}
-
-		// Spawn new tile
-		spawnRandomTile();
-
-		// Check game over
-		if (!hasMovesLeft()) {
-			gameOver = true;
-			deathTimer = 0;
-			gameOverText.visible = true;
-		}
-
-		drawAll();
-	}
+	// ── Grid Logic (UNCHANGED) ──────────────────────────────────
 
 	function doMove(dir:Int):Int {
 		var mergedScore = 0;
-		// Process each line in the direction of movement
 		for (i in 0...GRID_SIZE) {
 			var line = getLine(i, dir);
 			var result = mergeLine(line);
@@ -199,10 +226,10 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		var line = [];
 		for (j in 0...GRID_SIZE) {
 			switch (dir) {
-				case 0: line.push(grid[j][index]); // up: column top to bottom
-				case 1: line.push(grid[index][GRID_SIZE - 1 - j]); // right: row right to left
-				case 2: line.push(grid[GRID_SIZE - 1 - j][index]); // down: column bottom to top
-				case 3: line.push(grid[index][j]); // left: row left to right
+				case 0: line.push(grid[j][index]);
+				case 1: line.push(grid[index][GRID_SIZE - 1 - j]);
+				case 2: line.push(grid[GRID_SIZE - 1 - j][index]);
+				case 3: line.push(grid[index][j]);
 				default:
 			}
 		}
@@ -222,12 +249,10 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	}
 
 	function mergeLine(line:Array<Int>):{line:Array<Int>, score:Int} {
-		// Remove zeros
 		var nonZero:Array<Int> = [];
 		for (v in line)
 			if (v != 0) nonZero.push(v);
 
-		// Merge adjacent equal values
 		var merged:Array<Int> = [];
 		var mergeScore = 0;
 		var i = 0;
@@ -243,30 +268,28 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 			}
 		}
 
-		// Pad with zeros
 		while (merged.length < GRID_SIZE)
 			merged.push(0);
 
 		return {line: merged, score: mergeScore};
 	}
 
-	function spawnRandomTile() {
+	function spawnRandomTile():{r:Int, c:Int} {
 		var empty:Array<{r:Int, c:Int}> = [];
 		for (r in 0...GRID_SIZE)
 			for (c in 0...GRID_SIZE)
 				if (grid[r][c] == 0) empty.push({r: r, c: c});
 
-		if (empty.length == 0) return;
+		if (empty.length == 0) return null;
 		var cell = empty[Std.random(empty.length)];
 		grid[cell.r][cell.c] = Math.random() < 0.9 ? 2 : 4;
+		return cell;
 	}
 
 	function hasMovesLeft():Bool {
-		// Any empty cell?
 		for (r in 0...GRID_SIZE)
 			for (c in 0...GRID_SIZE)
 				if (grid[r][c] == 0) return true;
-		// Any adjacent equal cells?
 		for (r in 0...GRID_SIZE) {
 			for (c in 0...GRID_SIZE) {
 				var v = grid[r][c];
@@ -277,7 +300,391 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		return false;
 	}
 
-	// ── Drawing ──────────────────────────────────────────────────
+	// ── Move with animation tracking ────────────────────────────
+
+	function tryMove(dir:Int) {
+		var oldGrid = [for (r in 0...GRID_SIZE) [for (c in 0...GRID_SIZE) grid[r][c]]];
+		var mergedScore = doMove(dir);
+
+		var changed = false;
+		for (r in 0...GRID_SIZE)
+			for (c in 0...GRID_SIZE)
+				if (grid[r][c] != oldGrid[r][c]) changed = true;
+
+		if (!changed) {
+			// Invalid move — shake feedback
+			invalidShakeTimer = 0;
+			return;
+		}
+
+		score += mergedScore;
+		scoreText.text = Std.string(score);
+
+		// Score pulse
+		if (mergedScore > 0) {
+			scorePulseTimer = 0;
+		}
+
+		// Feedback on merge
+		if (mergedScore > 0 && ctx != null && ctx.feedback != null) {
+			if (mergedScore >= 64)
+				ctx.feedback.shake2D(0.12, 3);
+			if (mergedScore >= 256)
+				ctx.feedback.flash(0xFFFFFF, 0.08);
+		}
+
+		// Compute move results for animation by comparing old to new grid
+		var moveInfos = computeMoveResults(oldGrid, dir);
+		pendingMerges = moveInfos.merges;
+		pendingMergeScore = mergedScore;
+
+		// Spawn new tile
+		var spawned = spawnRandomTile();
+		pendingSpawn = spawned;
+
+		// Check game over (after spawn)
+		pendingGameOver = !hasMovesLeft();
+
+		// Start slide animations
+		startSlideAnimations(oldGrid, moveInfos.slides);
+	}
+
+	function computeMoveResults(oldGrid:Array<Array<Int>>, dir:Int):{slides:Array<SlideInfo>, merges:Array<MergeInfo>} {
+		var slides:Array<SlideInfo> = [];
+		var merges:Array<MergeInfo> = [];
+
+		for (lineIdx in 0...GRID_SIZE) {
+			// Get old line with positions
+			var oldLine:Array<{val:Int, r:Int, c:Int}> = [];
+			for (j in 0...GRID_SIZE) {
+				var r = 0;
+				var c = 0;
+				switch (dir) {
+					case 0: r = j; c = lineIdx;
+					case 1: r = lineIdx; c = GRID_SIZE - 1 - j;
+					case 2: r = GRID_SIZE - 1 - j; c = lineIdx;
+					case 3: r = lineIdx; c = j;
+					default:
+				}
+				if (oldGrid[r][c] != 0) {
+					oldLine.push({val: oldGrid[r][c], r: r, c: c});
+				}
+			}
+
+			// Process merges (same as mergeLine but with position tracking)
+			var i = 0;
+			var destIdx = 0;
+			while (i < oldLine.length) {
+				// Compute destination position for destIdx in this line direction
+				var dr = 0;
+				var dc = 0;
+				switch (dir) {
+					case 0: dr = destIdx; dc = lineIdx;
+					case 1: dr = lineIdx; dc = GRID_SIZE - 1 - destIdx;
+					case 2: dr = GRID_SIZE - 1 - destIdx; dc = lineIdx;
+					case 3: dr = lineIdx; dc = destIdx;
+					default:
+				}
+
+				if (i + 1 < oldLine.length && oldLine[i].val == oldLine[i + 1].val) {
+					// Merge: both tiles slide to dest
+					slides.push({fromR: oldLine[i].r, fromC: oldLine[i].c, toR: dr, toC: dc, val: oldLine[i].val});
+					slides.push({fromR: oldLine[i + 1].r, fromC: oldLine[i + 1].c, toR: dr, toC: dc, val: oldLine[i + 1].val});
+					merges.push({r: dr, c: dc, val: oldLine[i].val * 2});
+					i += 2;
+				} else {
+					// Slide only
+					if (oldLine[i].r != dr || oldLine[i].c != dc) {
+						slides.push({fromR: oldLine[i].r, fromC: oldLine[i].c, toR: dr, toC: dc, val: oldLine[i].val});
+					}
+					i++;
+				}
+				destIdx++;
+			}
+		}
+
+		return {slides: slides, merges: merges};
+	}
+
+	function startSlideAnimations(oldGrid:Array<Array<Int>>, slides:Array<SlideInfo>) {
+		animating = true;
+		animPhase = Sliding;
+		slideAnims = [];
+
+		// Remove all current tile objects — we'll rebuild after animation
+		for (r in 0...GRID_SIZE) {
+			for (c in 0...GRID_SIZE) {
+				if (tileObjects[r][c] != null) {
+					tileObjects[r][c].obj.remove();
+					tileObjects[r][c] = null;
+				}
+			}
+		}
+
+		if (slides.length == 0) {
+			// No slides, skip to pop phase
+			onSlidesComplete();
+			return;
+		}
+
+		// Create static tiles FIRST (lower z-order) for cells that didn't move
+		for (r in 0...GRID_SIZE) {
+			for (c in 0...GRID_SIZE) {
+				if (oldGrid[r][c] == 0) continue;
+				var didMove = false;
+				for (s in slides) {
+					if (s.fromR == r && s.fromC == c) {
+						didMove = true;
+						break;
+					}
+				}
+				if (!didMove) {
+					var obj = createTileObj(oldGrid[r][c], r, c);
+					var pos = cellScreenPos(r, c);
+					obj.x = pos.x + TILE_SIZE / 2;
+					obj.y = pos.y + TILE_SIZE / 2;
+				}
+			}
+		}
+
+		// Create sliding tile objects AFTER (higher z-order, render on top)
+		for (s in slides) {
+			var obj = createTileObj(s.val, s.fromR, s.fromC);
+			var fromPos = cellScreenPos(s.fromR, s.fromC);
+			var toPos = cellScreenPos(s.toR, s.toC);
+			obj.x = fromPos.x + TILE_SIZE / 2;
+			obj.y = fromPos.y + TILE_SIZE / 2;
+			slideAnims.push({
+				obj: obj,
+				fromX: fromPos.x + TILE_SIZE / 2,
+				fromY: fromPos.y + TILE_SIZE / 2,
+				toX: toPos.x + TILE_SIZE / 2,
+				toY: toPos.y + TILE_SIZE / 2,
+				progress: 0,
+				duration: ANIM_DURATION
+			});
+		}
+	}
+
+	function onSlidesComplete() {
+		// Clean up all temporary tile objects from tilesContainer
+		while (tilesContainer.numChildren > 0)
+			tilesContainer.getChildAt(0).remove();
+
+		// Rebuild tile objects from current grid state
+		syncTileVisuals();
+
+		// Start merge pops + spawn + floating texts
+		animPhase = Popping;
+		popAnims = [];
+
+		// Merge pop animations
+		for (m in pendingMerges) {
+			var to = tileObjects[m.r][m.c];
+			if (to != null) {
+				popAnims.push({
+					obj: to.obj,
+					progress: 0,
+					duration: MERGE_POP_DUR,
+					type: MergePop
+				});
+			}
+			// Emit particles at merge location
+			var pos = cellScreenPos(m.r, m.c);
+			var cx = pos.x + TILE_SIZE / 2;
+			var cy = pos.y + TILE_SIZE / 2;
+			var color = tileColor(m.val);
+			var count = if (m.val >= 512) 10 else if (m.val >= 128) 7 else 5;
+			emitParticles(cx, cy, color, count);
+
+			// Floating +N
+			showFloatingScore(cx, cy, m.val, color);
+		}
+
+		// Spawn scale-in animation
+		if (pendingSpawn != null) {
+			var to = tileObjects[pendingSpawn.r][pendingSpawn.c];
+			if (to != null) {
+				to.obj.scaleX = 0;
+				to.obj.scaleY = 0;
+				popAnims.push({
+					obj: to.obj,
+					progress: 0,
+					duration: SPAWN_ANIM_DUR,
+					type: SpawnScale
+				});
+			}
+		}
+
+		if (popAnims.length == 0) {
+			onPopsComplete();
+		}
+	}
+
+	function onPopsComplete() {
+		animPhase = Idle;
+		animating = false;
+
+		if (pendingGameOver) {
+			gameOver = true;
+			deathTimer = -DEATH_DELAY;
+			gameOverText.text = "Game Over! Score: " + Std.string(score);
+			gameOverText.visible = true;
+		}
+	}
+
+	// ── Tile Object Management ──────────────────────────────────
+
+	function cellScreenPos(r:Int, c:Int):{x:Float, y:Float} {
+		return {
+			x: boardX + BOARD_PAD + TILE_GAP + c * (TILE_SIZE + TILE_GAP),
+			y: boardY + BOARD_PAD + TILE_GAP + r * (TILE_SIZE + TILE_GAP)
+		};
+	}
+
+	function createTileObj(val:Int, r:Int, c:Int):Object {
+		var obj = new Object(tilesContainer);
+
+		var gfx = new Graphics(obj);
+
+		// For tiles >= 512, draw glow
+		if (val >= 512) {
+			gfx.beginFill(0xEDC22E, 0.15);
+			gfx.drawRoundedRect(-TILE_SIZE / 2 - 2, -TILE_SIZE / 2 - 2, TILE_SIZE + 4, TILE_SIZE + 4, 7);
+			gfx.endFill();
+		}
+
+		// Shadow
+		gfx.beginFill(0x000000, 0.06);
+		gfx.drawRoundedRect(-TILE_SIZE / 2 + 1, -TILE_SIZE / 2 + 2, TILE_SIZE, TILE_SIZE, 5);
+		gfx.endFill();
+
+		// Background
+		gfx.beginFill(tileColor(val));
+		gfx.drawRoundedRect(-TILE_SIZE / 2, -TILE_SIZE / 2, TILE_SIZE, TILE_SIZE, 5);
+		gfx.endFill();
+
+		// Highlight
+		gfx.beginFill(0xFFFFFF, 0.12);
+		gfx.drawRoundedRect(-TILE_SIZE / 2 + 2, -TILE_SIZE / 2 + 1, TILE_SIZE - 4, 3, 2);
+		gfx.endFill();
+
+		// Text shadow for readability on values >= 8
+		if (val >= 8) {
+			var shadow = new Text(hxd.res.DefaultFont.get(), obj);
+			shadow.text = Std.string(val);
+			shadow.textAlign = Center;
+			shadow.textColor = 0x000000;
+			var sc = textScale(val);
+			shadow.scale(sc);
+			shadow.x = 1;
+			shadow.y = -5 * sc + 1;
+			shadow.alpha = 0.15;
+		}
+
+		// Number
+		var txt = new Text(hxd.res.DefaultFont.get(), obj);
+		txt.text = Std.string(val);
+		txt.textAlign = Center;
+		txt.textColor = textColor(val);
+		var sc = textScale(val);
+		txt.scale(sc);
+		txt.x = 0;
+		txt.y = -5 * sc;
+
+		return obj;
+	}
+
+	function syncTileVisuals() {
+		for (r in 0...GRID_SIZE) {
+			for (c in 0...GRID_SIZE) {
+				var val = grid[r][c];
+				if (val == 0) {
+					if (tileObjects[r][c] != null) {
+						tileObjects[r][c].obj.remove();
+						tileObjects[r][c] = null;
+					}
+				} else {
+					// Always recreate for simplicity (values may have changed from merge)
+					if (tileObjects[r][c] != null) {
+						tileObjects[r][c].obj.remove();
+					}
+					var obj = createTileObj(val, r, c);
+					var pos = cellScreenPos(r, c);
+					obj.x = pos.x + TILE_SIZE / 2;
+					obj.y = pos.y + TILE_SIZE / 2;
+					tileObjects[r][c] = {obj: obj, val: val};
+				}
+			}
+		}
+	}
+
+	// ── Particles ───────────────────────────────────────────────
+
+	function emitParticles(cx:Float, cy:Float, color:Int, count:Int) {
+		for (_ in 0...count) {
+			if (particles.length >= MAX_PARTICLES) break;
+
+			var g:Graphics = null;
+			// Find unused from pool
+			for (pg in particlePool) {
+				if (!pg.visible) {
+					g = pg;
+					break;
+				}
+			}
+			if (g == null) break;
+
+			g.clear();
+			g.beginFill(color);
+			g.drawRect(-2, -2, 4, 4);
+			g.endFill();
+			g.x = cx;
+			g.y = cy;
+			g.alpha = 1;
+			g.visible = true;
+
+			var angle = Math.random() * Math.PI * 2;
+			var speed = 60 + Math.random() * 80;
+			particles.push({
+				g: g,
+				vx: Math.cos(angle) * speed,
+				vy: Math.sin(angle) * speed,
+				life: 0.3,
+				maxLife: 0.3
+			});
+		}
+	}
+
+	// ── Floating Score Texts ────────────────────────────────────
+
+	function showFloatingScore(cx:Float, cy:Float, val:Int, color:Int) {
+		var txt:Text = null;
+		for (t in floatTextPool) {
+			if (!t.visible) {
+				txt = t;
+				break;
+			}
+		}
+		if (txt == null) return;
+
+		txt.text = "+" + Std.string(val);
+		txt.textColor = 0xFFFFFF;
+		txt.x = cx;
+		txt.y = cy - 15;
+		txt.alpha = 1;
+		txt.visible = true;
+		txt.scale(1.2);
+
+		floatingTexts.push({
+			txt: txt,
+			vy: -75.0,
+			life: 0.4,
+			maxLife: 0.4
+		});
+	}
+
+	// ── Drawing (static elements) ───────────────────────────────
 
 	function tileColor(val:Int):Int {
 		return switch (val) {
@@ -292,7 +699,7 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 			case 512: 0xEDC850;
 			case 1024: 0xEDC53F;
 			case 2048: 0xEDC22E;
-			default: 0x3C3A32; // super tiles
+			default: 0x3C3A32;
 		};
 	}
 
@@ -303,24 +710,16 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	function textScale(val:Int):Float {
 		if (val < 100) return 1.8;
 		if (val < 1000) return 1.4;
-		return 1.1;
+		if (val < 10000) return 1.0;
+		return 0.85;
 	}
 
-	function drawAll() {
-		drawBg();
-		drawBoard();
-		drawTiles();
-		drawUI();
-	}
-
-	function drawBg() {
+	function drawStaticBg() {
 		bgG.clear();
-		// Warm background
 		bgG.beginFill(0xFAF8EF);
 		bgG.drawRect(0, 0, DESIGN_W, DESIGN_H);
 		bgG.endFill();
 
-		// Subtle pattern
 		bgG.beginFill(0xF0E8D8, 0.3);
 		var y = 0;
 		while (y < DESIGN_H) {
@@ -330,71 +729,27 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		bgG.endFill();
 	}
 
-	function drawBoard() {
+	function drawStaticBoard() {
 		boardG.clear();
-		// Board background with rounded corners
 		boardG.beginFill(0xBBADA0);
 		boardG.drawRoundedRect(boardX, boardY, boardSize, boardSize, 8);
 		boardG.endFill();
 
-		// Empty cell slots
 		for (r in 0...GRID_SIZE) {
 			for (c in 0...GRID_SIZE) {
-				var cx = boardX + BOARD_PAD + TILE_GAP + c * (TILE_SIZE + TILE_GAP);
-				var cy = boardY + BOARD_PAD + TILE_GAP + r * (TILE_SIZE + TILE_GAP);
+				var pos = cellScreenPos(r, c);
 				boardG.beginFill(0xCDC1B4);
-				boardG.drawRoundedRect(cx, cy, TILE_SIZE, TILE_SIZE, 5);
+				boardG.drawRoundedRect(pos.x, pos.y, TILE_SIZE, TILE_SIZE, 5);
 				boardG.endFill();
-			}
-		}
-	}
-
-	function drawTiles() {
-		tilesG.clear();
-		// Remove old text children (keep tilesG itself)
-		while (tilesG.numChildren > 0)
-			tilesG.getChildAt(0).remove();
-
-		for (r in 0...GRID_SIZE) {
-			for (c in 0...GRID_SIZE) {
-				var val = grid[r][c];
-				if (val == 0) continue;
-
-				var cx = boardX + BOARD_PAD + TILE_GAP + c * (TILE_SIZE + TILE_GAP);
-				var cy = boardY + BOARD_PAD + TILE_GAP + r * (TILE_SIZE + TILE_GAP);
-
-				// Tile shadow
-				tilesG.beginFill(0x000000, 0.06);
-				tilesG.drawRoundedRect(cx + 1, cy + 2, TILE_SIZE, TILE_SIZE, 5);
-				tilesG.endFill();
-
-				// Tile background
-				tilesG.beginFill(tileColor(val));
-				tilesG.drawRoundedRect(cx, cy, TILE_SIZE, TILE_SIZE, 5);
-				tilesG.endFill();
-
-				// Highlight on top edge
-				tilesG.beginFill(0xFFFFFF, 0.12);
-				tilesG.drawRoundedRect(cx + 2, cy + 1, TILE_SIZE - 4, 3, 2);
-				tilesG.endFill();
-
-				// Number text
-				var txt = new Text(hxd.res.DefaultFont.get(), tilesG);
-				txt.text = Std.string(val);
-				txt.textAlign = Center;
-				txt.textColor = textColor(val);
-				var sc = textScale(val);
-				txt.scale(sc);
-				txt.x = cx + TILE_SIZE / 2;
-				txt.y = cy + TILE_SIZE / 2 - 5 * sc;
 			}
 		}
 	}
 
 	function drawUI() {
 		uiG.clear();
+		while (uiG.numChildren > 0)
+			uiG.getChildAt(0).remove();
 
-		// Score box
 		var boxW = 80.0;
 		var boxH = 45.0;
 		var boxX = DESIGN_W - boxW - 15;
@@ -403,7 +758,6 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		uiG.drawRoundedRect(boxX, boxY, boxW, boxH, 5);
 		uiG.endFill();
 
-		// "SCORE" label
 		var lbl = new Text(hxd.res.DefaultFont.get(), uiG);
 		lbl.text = "SCORE";
 		lbl.x = boxX + boxW / 2;
@@ -416,7 +770,6 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		scoreText.y = boxY + 16;
 		scoreText.textAlign = Center;
 
-		// Best score box
 		if (bestScore > 0) {
 			var bx = boxX - boxW - 8;
 			uiG.beginFill(0xBBADA0);
@@ -435,7 +788,6 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 			bestText.text = Std.string(bestScore);
 		}
 
-		// Instruction hint below board
 		var hintY = boardY + boardSize + 15;
 		var hint = new Text(hxd.res.DefaultFont.get(), uiG);
 		hint.text = "Deslize para mover os blocos";
@@ -445,7 +797,6 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		hint.textAlign = Center;
 		hint.textColor = 0xBBADA0;
 
-		// Combine hint
 		var hint2 = new Text(hxd.res.DefaultFont.get(), uiG);
 		hint2.text = "Combine iguais para chegar ao 2048!";
 		hint2.x = DESIGN_W / 2;
@@ -455,7 +806,20 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		hint2.textColor = 0xCDC1B4;
 	}
 
-	// ── Interface ────────────────────────────────────────────────
+	// ── Easing Functions ────────────────────────────────────────
+
+	static function easeOutCubic(t:Float):Float {
+		var t1 = 1 - t;
+		return 1 - t1 * t1 * t1;
+	}
+
+	static function easeOutBack(t:Float):Float {
+		var c1 = 1.70158;
+		var c3 = c1 + 1;
+		return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+	}
+
+	// ── Interface ───────────────────────────────────────────────
 
 	public function setOnLose(c:MinigameContext) {
 		ctx = c;
@@ -468,19 +832,60 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 		deathTimer = -1;
 		touchDown = false;
 		animating = false;
+		animPhase = Idle;
+		pendingGameOver = false;
+		pendingMergeScore = 0;
 		gameOverText.visible = false;
 		flashG.clear();
 		scoreText.text = "0";
+		scoreText.scale(scoreBaseScale);
 		bestText.text = if (bestScore > 0) Std.string(bestScore) else "";
+		scorePulseTimer = -1;
+		invalidShakeTimer = -1;
+
+		// Clear animations
+		slideAnims = [];
+		popAnims = [];
+		pendingMerges = [];
+		floatingTexts = [];
+
+		// Clear tiles
+		while (tilesContainer.numChildren > 0)
+			tilesContainer.getChildAt(0).remove();
+		tileObjects = [for (_ in 0...GRID_SIZE) [for (_ in 0...GRID_SIZE) null]];
+
+		// Clear particles
+		for (p in particles)
+			p.g.visible = false;
+		particles = [];
+
+		// Clear floating texts
+		for (ft in floatTextPool)
+			ft.visible = false;
 
 		// Spawn 2 initial tiles
 		spawnRandomTile();
 		spawnRandomTile();
 
-		drawAll();
+		// Draw static elements once
+		drawStaticBg();
+		drawStaticBoard();
+		drawUI();
+
+		// Build initial tile visuals
+		syncTileVisuals();
 	}
 
 	public function dispose() {
+		// Clear all animations
+		slideAnims = [];
+		popAnims = [];
+		pendingMerges = [];
+		floatingTexts = [];
+		for (p in particles)
+			p.g.visible = false;
+		particles = [];
+
 		interactive.remove();
 		contentObj.removeChildren();
 		ctx = null;
@@ -495,12 +900,129 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 	public function update(dt:Float) {
 		if (ctx == null) return;
 
+		// Keyboard input
+		if (!gameOver && !animating) {
+			if (Key.isPressed(Key.LEFT)) tryMove(3);
+			else if (Key.isPressed(Key.RIGHT)) tryMove(1);
+			else if (Key.isPressed(Key.UP)) tryMove(0);
+			else if (Key.isPressed(Key.DOWN)) tryMove(2);
+		}
+
+		// Update slide animations
+		if (animPhase == Sliding) {
+			var allDone = true;
+			for (sa in slideAnims) {
+				sa.progress += dt / sa.duration;
+				if (sa.progress >= 1) {
+					sa.progress = 1;
+				} else {
+					allDone = false;
+				}
+				var t = easeOutCubic(sa.progress);
+				sa.obj.x = sa.fromX + (sa.toX - sa.fromX) * t;
+				sa.obj.y = sa.fromY + (sa.toY - sa.fromY) * t;
+			}
+			if (allDone) {
+				onSlidesComplete();
+			}
+		}
+
+		// Update pop animations
+		if (animPhase == Popping) {
+			var allDone = true;
+			for (pa in popAnims) {
+				pa.progress += dt / pa.duration;
+				if (pa.progress >= 1) {
+					pa.progress = 1;
+				} else {
+					allDone = false;
+				}
+
+				switch (pa.type) {
+					case MergePop:
+						var t = pa.progress;
+						var s = if (t < 0.5) 1.0 + 0.25 * easeOutCubic(t * 2) else 1.25 - 0.25 * easeOutCubic((t - 0.5) * 2);
+						pa.obj.scaleX = s;
+						pa.obj.scaleY = s;
+					case SpawnScale:
+						var t = easeOutBack(pa.progress);
+						pa.obj.scaleX = t;
+						pa.obj.scaleY = t;
+				}
+			}
+			if (allDone) {
+				// Reset scales
+				for (pa in popAnims) {
+					pa.obj.scaleX = 1;
+					pa.obj.scaleY = 1;
+				}
+				onPopsComplete();
+			}
+		}
+
+		// Update particles
+		var i = particles.length - 1;
+		while (i >= 0) {
+			var p = particles[i];
+			p.life -= dt;
+			if (p.life <= 0) {
+				p.g.visible = false;
+				particles.splice(i, 1);
+			} else {
+				p.g.x += p.vx * dt;
+				p.g.y += p.vy * dt;
+				p.g.alpha = p.life / p.maxLife;
+			}
+			i--;
+		}
+
+		// Update floating texts
+		var fi = floatingTexts.length - 1;
+		while (fi >= 0) {
+			var ft = floatingTexts[fi];
+			ft.life -= dt;
+			if (ft.life <= 0) {
+				ft.txt.visible = false;
+				floatingTexts.splice(fi, 1);
+			} else {
+				ft.txt.y += ft.vy * dt;
+				ft.txt.alpha = ft.life / ft.maxLife;
+			}
+			fi--;
+		}
+
+		// Score pulse animation
+		if (scorePulseTimer >= 0) {
+			scorePulseTimer += dt;
+			var t = scorePulseTimer / 0.2;
+			if (t >= 1) {
+				scorePulseTimer = -1;
+				scoreText.scale(scoreBaseScale);
+			} else {
+				var s = if (t < 0.5) scoreBaseScale + 0.4 * easeOutCubic(t * 2) else scoreBaseScale + 0.4 * (1 - easeOutCubic((t - 0.5) * 2));
+				scoreText.scale(s);
+			}
+		}
+
+		// Invalid shake
+		if (invalidShakeTimer >= 0) {
+			invalidShakeTimer += dt;
+			if (invalidShakeTimer >= 0.08) {
+				invalidShakeTimer = -1;
+				tilesContainer.x = 0;
+			} else {
+				var t = invalidShakeTimer / 0.08;
+				tilesContainer.x = Math.sin(t * Math.PI * 4) * 2;
+			}
+		}
+
+		// Game over
 		if (gameOver) {
-			if (deathTimer >= 0) {
+			if (deathTimer >= -DEATH_DELAY) {
 				deathTimer += dt;
+				if (deathTimer < 0) return; // delay phase
 				var t = deathTimer / DEATH_DUR;
 				if (t < 1) {
-					// Fade overlay
 					flashG.clear();
 					flashG.beginFill(0xFAF8EF, t * 0.6);
 					flashG.drawRect(0, 0, DESIGN_W, DESIGN_H);
@@ -516,4 +1038,68 @@ class Game2048 implements IMinigameSceneWithLose implements IMinigameUpdatable {
 			return;
 		}
 	}
+}
+
+// ── Type Definitions ────────────────────────────────────────
+
+typedef TileObj = {
+	obj:Object,
+	val:Int
+};
+
+typedef SlideInfo = {
+	fromR:Int,
+	fromC:Int,
+	toR:Int,
+	toC:Int,
+	val:Int
+};
+
+typedef MergeInfo = {
+	r:Int,
+	c:Int,
+	val:Int
+};
+
+typedef SlideAnim = {
+	obj:Object,
+	fromX:Float,
+	fromY:Float,
+	toX:Float,
+	toY:Float,
+	progress:Float,
+	duration:Float
+};
+
+typedef PopAnim = {
+	obj:Object,
+	progress:Float,
+	duration:Float,
+	type:PopType
+};
+
+typedef ParticleData = {
+	g:Graphics,
+	vx:Float,
+	vy:Float,
+	life:Float,
+	maxLife:Float
+};
+
+typedef FloatText = {
+	txt:Text,
+	vy:Float,
+	life:Float,
+	maxLife:Float
+};
+
+enum PopType {
+	MergePop;
+	SpawnScale;
+}
+
+enum AnimPhase {
+	Idle;
+	Sliding;
+	Popping;
 }
