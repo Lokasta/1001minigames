@@ -251,6 +251,51 @@ class FeedbackManager {
 		contentRoot.y = 0;
 	}
 
+	/** Reseta TODOS os efeitos para estado neutro (shake, zoom, flash, fade, FOV, clipping). */
+	public function resetAll() {
+		clearImpulse();
+
+		// Zoom 2D
+		zoom2DT = 1;
+		zoom2DDuration = 0;
+		zoom2DStart = 1;
+		zoom2DTarget = 1;
+		contentRoot.scaleX = 1;
+		contentRoot.scaleY = 1;
+
+		// Zoom 3D
+		zoom3DT = 1;
+		zoom3DDuration = 0;
+		if (s3d != null) {
+			s3d.camera.fovY = savedFov;
+		}
+
+		// Flash
+		flashT = 1;
+		flashDuration = 0;
+		flashAlpha = 0;
+
+		// Fade
+		fadeT = 1;
+		fadeDuration = 0;
+		fadeAlpha = 0;
+
+		// FOV
+		fovT = 1;
+		fovDuration = 0;
+
+		// Clipping
+		clipT = 1;
+		clipDuration = 0;
+		if (s3d != null) {
+			s3d.camera.zNear = savedZNear;
+			s3d.camera.zFar = savedZFar;
+		}
+
+		// Overlay
+		overlay.visible = false;
+	}
+
 	/** Chamado todo frame pelo GameFlow. */
 	public function update(dt: Float) {
 		if (contentRoot == null) return;

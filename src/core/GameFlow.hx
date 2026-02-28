@@ -169,6 +169,7 @@ class GameFlow {
 			currentMinigame.content.remove();
 			currentMinigame = null;
 		}
+		feedback.resetAll();
 		if (state == Start) {
 			var outgoing = slideContainer.getChildAt(0);
 			slideContainer.removeChild(outgoing);
@@ -254,6 +255,8 @@ class GameFlow {
 		currentMinigame.dispose();
 		currentMinigame.content.remove();
 		currentMinigame = null;
+
+		feedback.resetAll();
 
 		lastScore = score;
 		lastMinigameId = minigameId;
