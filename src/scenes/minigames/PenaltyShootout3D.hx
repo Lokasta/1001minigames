@@ -1044,17 +1044,6 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		drawHud();
 	}
 
-	function updateCameraFollow(dt:Float) {
-		if (s3d == null)
-			return;
-		camFollowT += dt;
-		var progress = clampF(camFollowT / 0.9, 0, 1);
-		var ease = progress * progress * (3 - 2 * progress);
-		var followZ = -20.0 + ease * 8.0;
-		var followY = 3.8 - ease * 0.6;
-		s3d.camera.pos.set(0, followY, followZ);
-		s3d.camera.target.set(0, 1.2 + ease * 0.2, 0);
-	}
 
 	public function update(dt:Float) {
 		if (ctx == null || gameOver)
@@ -1138,7 +1127,6 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 				ballShadow.material.color.setColor(Std.int(0x1A * shadowAlpha) << 16 | Std.int(0x4A * shadowAlpha) << 8 | Std.int(0x1A * shadowAlpha));
 			}
 
-			updateCameraFollow(dt);
 
 			// Keeper dive
 			keeperDiveTimer += dt;

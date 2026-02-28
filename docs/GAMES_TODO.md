@@ -43,10 +43,10 @@ Ideias de minigames para o 1001 Minigames. Marcados com estrela os que mais comb
 - [ ] Duelo de Pistola -- espera o sinal, toca primeiro que o oponente
 
 ## Puzzle Rapido
-- [ ] 2048 -- deslize os numeros, combine ate morrer ⭐
+- [x] 2048 -- deslize os numeros, combine ate morrer ⭐
 - [ ] Color Match -- conecte cores iguais sem cruzar caminhos
 - [ ] Memory Cards -- vire pares de cartas, tempo limitado
-- [ ] Sliding Puzzle -- organize a imagem deslizando pecas
+- [x] Sliding Puzzle -- organize a imagem deslizando pecas
 - [ ] Pipe Connect -- conecte os canos antes da agua chegar
 
 ## Skill / Destreza

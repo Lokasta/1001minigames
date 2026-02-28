@@ -32,6 +32,11 @@ class Main extends hxd.App {
 		gameFlow.registerMinigame("Stack", function() return new scenes.minigames.Stack());
 		gameFlow.registerMinigame("Timing Ball", function() return new scenes.minigames.TimingBall());
 		gameFlow.registerMinigame("Red Light Green Light", function() return new scenes.minigames.RedLightGreenLight());
+		gameFlow.registerMinigame("2048", function() return new scenes.minigames.Game2048());
+		gameFlow.registerMinigame("Memory Cards", function() return new scenes.minigames.MemoryCards());
+		gameFlow.registerMinigame("Sliding Puzzle", function() return new scenes.minigames.SlidingPuzzle());
+		gameFlow.registerMinigame("Pipe Connect", function() return new scenes.minigames.PipeConnect());
+		gameFlow.registerMinigame("Color Match", function() return new scenes.minigames.ColorMatch());
 	}
 
 	override function onResize() {
