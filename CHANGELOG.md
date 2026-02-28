@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-03-01
+- **Feature**: Persistent high score storage — HighScoreManager singleton saves best scores per minigame via localStorage (web) / native prefs, ScoreScreen shows "BEST" score and animated "NEW RECORD!" indicator
 - **Feature**: Weighted probability support for minigame selection — optional weight parameter on registerMinigame() (default 1.0 = uniform), combined with no-repeat logic
 - **Fix**: Minigame random selection no longer repeats the same game consecutively — tracks last played index and re-rolls when needed
 
