@@ -37,6 +37,7 @@ class GameFlow {
 	var minigameFactories: Array<Void->IMinigameScene>;
 	var lastScore: Int = 0;
 	var lastMinigameId: String = "";
+	var lastPlayedIndex: Int = -1;
 
 	var transitionT: Float;
 	var transitioning: Bool;
@@ -182,6 +183,7 @@ class GameFlow {
 
 	function startMinigameByIndexInternal(index: Int) {
 		if (minigameFactories.length == 0) return;
+		lastPlayedIndex = index;
 
 		transitioning = true;
 		transitionT = 0;
@@ -211,8 +213,12 @@ class GameFlow {
 	}
 
 	function startTransitionToNextMinigame() {
-		if (minigameFactories.length == 0) return;
-		startMinigameByIndexInternal(Std.random(minigameFactories.length));
+		var n = minigameFactories.length;
+		if (n == 0) return;
+		var idx = Std.random(n);
+		while (idx == lastPlayedIndex && n > 1)
+			idx = Std.random(n);
+		startMinigameByIndexInternal(idx);
 	}
 
 	function finishTransition() {
