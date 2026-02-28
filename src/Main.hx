@@ -37,6 +37,11 @@ class Main extends hxd.App {
 		gameFlow.registerMinigame("Sliding Puzzle", function() return new scenes.minigames.SlidingPuzzle(), "puzzle", ["puzzle", "strategy"]);
 		gameFlow.registerMinigame("Pipe Connect", function() return new scenes.minigames.PipeConnect(), "puzzle", ["puzzle", "strategy"]);
 		gameFlow.registerMinigame("Color Match", function() return new scenes.minigames.ColorMatch(), "reflex", ["reflex", "puzzle"]);
+		gameFlow.registerMinigame("Magical Drop", function() return new scenes.minigames.MagicalDrop(), "arcade", ["arcade", "puzzle"]);
+		gameFlow.registerMinigame("Golf Putt", function() return new scenes.minigames.GolfPutt(), "sports", ["sports", "timing"]);
+		gameFlow.registerMinigame("Ice Climber", function() return new scenes.minigames.IceClimber(), "runner", ["runner", "reflex"]);
+		gameFlow.registerMinigame("Mini Racing", function() return new scenes.minigames.MiniRacing3D(), "sports", ["sports", "racing"]);
+		gameFlow.registerMinigame("Boxing", function() return new scenes.minigames.Boxing3D(), "sports", ["sports", "3d"]);
 	}
 
 	override function onResize() {

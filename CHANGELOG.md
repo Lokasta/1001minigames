@@ -1,9 +1,17 @@
 # Changelog
 
 ## 2026-03-01
+- **Feature**: Mini Racing minigame — top-down kart racing with 5 track layouts (GP Circuit, Snake, Oval Long, Tech Track, Wide Loop), camera follows and rotates with player, 6 karts (player + 5 AI), 3 laps per race, minimap, left/right tap controls
+- **Feature**: Boxing 3D minigame
+- **Feature**: Golf Putt minigame
+- **Feature**: Ice Climber minigame — Doodle Jump style vertical platformer with 4 platform types, springs, coins, monsters, particles
+- **Feature**: Magical Drop minigame
+- **Feature**: Color Match minigame — Flow Free style, connect matching colors without crossing paths, timer + levels
 - **Feature**: Persistent high score storage — HighScoreManager singleton saves best scores per minigame via localStorage (web) / native prefs, ScoreScreen shows "BEST" score and animated "NEW RECORD!" indicator
 - **Feature**: Weighted probability support for minigame selection — optional weight parameter on registerMinigame() (default 1.0 = uniform), combined with no-repeat logic
 - **Fix**: Minigame random selection no longer repeats the same game consecutively — tracks last played index and re-rolls when needed
+- **Fix**: Mini Racing forward direction — camera rotation offset fixed so kart drives forward instead of appearing to go in reverse
+- **UI**: ScoreScreen polish — rank labels, encouragement text, improved layout
 
 ## 2026-02-28
 - **Feature**: Magical Drop minigame — classic arcade gem puzzle, move player across 7 columns, tap to grab same-colored gems from bottom of column, tap/swipe to throw them up, 3+ matching vertically or horizontally = pop with chain combos, sparkle effects, jester character, new rows push down on timer with speed ramp, 5 gem colors with unique symbols (diamond/circle/star/square/heart)

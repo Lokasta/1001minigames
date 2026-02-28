@@ -30,10 +30,10 @@ class ScoreScreen extends Object {
 	var decorLine:Graphics;
 	var scoreGlow:Graphics;
 
-	// High score display
-	var bestLabel:Text;
-	var newRecordLabel:Text;
-	var showNewRecord:Bool = false;
+	var rankLabel:Text;
+	var bestScoreText:Text;
+	var encourageText:Text;
+	var isFirstPlay:Bool = true;
 
 	// Callback para voltar ao menu
 	public var onGoHome:Null<Void->Void> = null;
@@ -88,20 +88,26 @@ class ScoreScreen extends Object {
 		scoreValue.scale(4);
 		scoreValue.textColor = 0xFFFFFF;
 
-		// Best score label
-		bestLabel = new Text(hxd.res.DefaultFont.get(), this);
-		bestLabel.text = "BEST: 0";
-		bestLabel.textAlign = Center;
-		bestLabel.scale(1.2);
-		bestLabel.textColor = 0x9BA4C4;
+		// Rank label (e.g. "Nice!", "Amazing!")
+		rankLabel = new Text(hxd.res.DefaultFont.get(), this);
+		rankLabel.text = "";
+		rankLabel.textAlign = Center;
+		rankLabel.scale(1.6);
+		rankLabel.textColor = 0x5DADE2;
 
-		// New record label
-		newRecordLabel = new Text(hxd.res.DefaultFont.get(), this);
-		newRecordLabel.text = "NEW RECORD!";
-		newRecordLabel.textAlign = Center;
-		newRecordLabel.scale(1.3);
-		newRecordLabel.textColor = 0xFFD700;
-		newRecordLabel.visible = false;
+		// Best score line
+		bestScoreText = new Text(hxd.res.DefaultFont.get(), this);
+		bestScoreText.text = "";
+		bestScoreText.textAlign = Center;
+		bestScoreText.scale(1.0);
+		bestScoreText.textColor = 0x9BA4C4;
+
+		// Encouragement message
+		encourageText = new Text(hxd.res.DefaultFont.get(), this);
+		encourageText.text = "";
+		encourageText.textAlign = Center;
+		encourageText.scale(0.9);
+		encourageText.textColor = 0x9BA4C4;
 
 		// Hint text
 		hint = new Text(hxd.res.DefaultFont.get(), this);
@@ -161,11 +167,14 @@ class ScoreScreen extends Object {
 		scoreValue.x = cx;
 		scoreValue.y = Std.int(designH * 0.36);
 
-		bestLabel.x = cx;
-		bestLabel.y = Std.int(designH * 0.54);
+		rankLabel.x = cx;
+		rankLabel.y = Std.int(designH * 0.48);
 
-		newRecordLabel.x = cx;
-		newRecordLabel.y = Std.int(designH * 0.60);
+		bestScoreText.x = cx;
+		bestScoreText.y = Std.int(designH * 0.55);
+
+		encourageText.x = cx;
+		encourageText.y = Std.int(designH * 0.72);
 
 		hint.x = cx;
 		hint.y = Std.int(designH * 0.78);
@@ -247,14 +256,63 @@ class ScoreScreen extends Object {
 		g.lineStyle();
 	}
 
-	public function setScore(score:Int, minigameId:String, highScore:Int = 0, isNewRecord:Bool = false) {
+	public function setScore(score:Int, minigameId:String, bestScore:Int, isNewBest:Bool, isFirstPlay:Bool) {
 		scoreValue.text = Std.string(score);
 		scoreShadow.text = Std.string(score);
 		gameName.text = minigameId != null && minigameId != "" ? minigameId : "Minigame";
-		bestLabel.text = "BEST: " + Std.string(highScore);
-		showNewRecord = isNewRecord;
-		newRecordLabel.visible = isNewRecord;
 		entranceT = 0.0;
+
+		this.isFirstPlay = isFirstPlay;
+
+		// Rank label based on ratio to best
+		if (isFirstPlay) {
+			rankLabel.text = "Good Start!";
+			rankLabel.textColor = 0x5DADE2;
+			encourageText.text = "Keep playing to set records!";
+			encourageText.textColor = 0x5DADE2;
+		} else if (isNewBest) {
+			rankLabel.text = "NEW RECORD!";
+			rankLabel.textColor = 0xFFD700;
+			encourageText.text = "You beat your record!";
+			encourageText.textColor = 0xFFD700;
+		} else if (bestScore > 0) {
+			var ratio = score / bestScore;
+			if (ratio >= 1.0) {
+				rankLabel.text = "Amazing!";
+				rankLabel.textColor = 0xE74C6F;
+				encourageText.text = "Matched your best!";
+				encourageText.textColor = 0xE74C6F;
+			} else if (ratio >= 0.8) {
+				rankLabel.text = "Great!";
+				rankLabel.textColor = 0xF4D03F;
+				encourageText.text = "Almost there — try again!";
+				encourageText.textColor = 0xF4D03F;
+			} else if (ratio >= 0.5) {
+				rankLabel.text = "Nice!";
+				rankLabel.textColor = 0x58D68D;
+				encourageText.text = "Getting closer!";
+				encourageText.textColor = 0x58D68D;
+			} else {
+				rankLabel.text = "Keep Going!";
+				rankLabel.textColor = 0x9BA4C4;
+				encourageText.text = "Practice makes perfect!";
+				encourageText.textColor = 0x9BA4C4;
+			}
+		} else {
+			rankLabel.text = "Keep Going!";
+			rankLabel.textColor = 0x9BA4C4;
+			encourageText.text = "You can do it!";
+			encourageText.textColor = 0x9BA4C4;
+		}
+
+		// Best score line
+		if (isNewBest && !isFirstPlay) {
+			bestScoreText.text = "NEW BEST!";
+			bestScoreText.textColor = 0xFFD700;
+		} else {
+			bestScoreText.text = "BEST: " + Std.string(bestScore);
+			bestScoreText.textColor = 0x9BA4C4;
+		}
 	}
 
 	public function update(dt:Float):Void {
@@ -321,19 +379,19 @@ class ScoreScreen extends Object {
 		scoreShadow.y = Std.int(designH * 0.36) + 2;
 		scoreShadow.alpha = 0.2 + 0.1 * Math.sin(time * 1.2);
 
-		// Best label fade in
-		var bestEf = Math.max(0, (ef - 0.4) / 0.6);
-		bestLabel.alpha = bestEf * 0.8;
-		bestLabel.y = Std.int(designH * 0.54 + 10 * (1.0 - bestEf));
+		// Rank label fade in (slightly delayed)
+		var rankEf = Math.max(0, (ef - 0.3) / 0.7);
+		rankLabel.alpha = rankEf;
+		rankLabel.y = Std.int(designH * 0.48 + 15 * (1.0 - rankEf));
 
-		// New record pulse
-		if (showNewRecord) {
-			var nrEf = Math.max(0, (ef - 0.5) / 0.5);
-			newRecordLabel.alpha = nrEf;
-			var pulse = 1.0 + 0.08 * Math.sin(time * 4.0);
-			newRecordLabel.scaleX = 1.3 * pulse * nrEf;
-			newRecordLabel.scaleY = 1.3 * pulse * nrEf;
-		}
+		// Best score text fade in (more delayed)
+		var bestEf = Math.max(0, (ef - 0.45) / 0.55);
+		bestScoreText.alpha = bestEf * 0.8;
+		bestScoreText.y = Std.int(designH * 0.55 + 10 * (1.0 - bestEf));
+
+		// Encouragement text fade in (most delayed)
+		var encEf = Math.max(0, (ef - 0.5) / 0.5);
+		encourageText.alpha = encEf * 0.7;
 
 		// Hint text pulse
 		var hintAlpha = 0.4 + 0.3 * Math.sin(time * 2.0);
