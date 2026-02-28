@@ -35,6 +35,7 @@ class GameFlow {
 	var currentMinigame: IMinigameScene = null;
 	var minigameNames: Array<String>;
 	var minigameFactories: Array<Void->IMinigameScene>;
+	var minigameWeights: Array<Float>;
 	var lastScore: Int = 0;
 	var lastMinigameId: String = "";
 
@@ -64,6 +65,7 @@ class GameFlow {
 		root = new Object(s2d);
 		minigameNames = [];
 		minigameFactories = [];
+		minigameWeights = [];
 		transitionT = 0;
 		transitioning = false;
 		transitionSkipOutgoing = false;
@@ -96,9 +98,10 @@ class GameFlow {
 		feedback = new FeedbackManager(s2d, designW, designH, root, s3d);
 	}
 
-	public function registerMinigame(name: String, factory: Void->IMinigameScene) {
+	public function registerMinigame(name: String, factory: Void->IMinigameScene, weight: Float = 1.0) {
 		minigameNames.push(name);
 		minigameFactories.push(factory);
+		minigameWeights.push(weight < 0 ? 0.0 : weight);
 	}
 
 	function onDebugSelectMinigame(index: Int) {
@@ -212,7 +215,26 @@ class GameFlow {
 
 	function startTransitionToNextMinigame() {
 		if (minigameFactories.length == 0) return;
-		startMinigameByIndexInternal(Std.random(minigameFactories.length));
+
+		var totalWeight = 0.0;
+		for (w in minigameWeights)
+			totalWeight += w;
+
+		if (totalWeight <= 0) {
+			startMinigameByIndexInternal(Std.random(minigameFactories.length));
+			return;
+		}
+
+		var r = Math.random() * totalWeight;
+		for (i in 0...minigameWeights.length) {
+			r -= minigameWeights[i];
+			if (r < 0) {
+				startMinigameByIndexInternal(i);
+				return;
+			}
+		}
+		// Defensive fallback for float drift
+		startMinigameByIndexInternal(minigameFactories.length - 1);
 	}
 
 	function finishTransition() {
