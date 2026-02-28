@@ -30,6 +30,11 @@ class ScoreScreen extends Object {
 	var decorLine:Graphics;
 	var scoreGlow:Graphics;
 
+	// High score display
+	var bestLabel:Text;
+	var newRecordLabel:Text;
+	var showNewRecord:Bool = false;
+
 	// Callback para voltar ao menu
 	public var onGoHome:Null<Void->Void> = null;
 
@@ -82,6 +87,21 @@ class ScoreScreen extends Object {
 		scoreValue.textAlign = Center;
 		scoreValue.scale(4);
 		scoreValue.textColor = 0xFFFFFF;
+
+		// Best score label
+		bestLabel = new Text(hxd.res.DefaultFont.get(), this);
+		bestLabel.text = "BEST: 0";
+		bestLabel.textAlign = Center;
+		bestLabel.scale(1.2);
+		bestLabel.textColor = 0x9BA4C4;
+
+		// New record label
+		newRecordLabel = new Text(hxd.res.DefaultFont.get(), this);
+		newRecordLabel.text = "NEW RECORD!";
+		newRecordLabel.textAlign = Center;
+		newRecordLabel.scale(1.3);
+		newRecordLabel.textColor = 0xFFD700;
+		newRecordLabel.visible = false;
 
 		// Hint text
 		hint = new Text(hxd.res.DefaultFont.get(), this);
@@ -140,6 +160,12 @@ class ScoreScreen extends Object {
 
 		scoreValue.x = cx;
 		scoreValue.y = Std.int(designH * 0.36);
+
+		bestLabel.x = cx;
+		bestLabel.y = Std.int(designH * 0.54);
+
+		newRecordLabel.x = cx;
+		newRecordLabel.y = Std.int(designH * 0.60);
 
 		hint.x = cx;
 		hint.y = Std.int(designH * 0.78);
@@ -221,10 +247,13 @@ class ScoreScreen extends Object {
 		g.lineStyle();
 	}
 
-	public function setScore(score:Int, minigameId:String) {
+	public function setScore(score:Int, minigameId:String, highScore:Int = 0, isNewRecord:Bool = false) {
 		scoreValue.text = Std.string(score);
 		scoreShadow.text = Std.string(score);
 		gameName.text = minigameId != null && minigameId != "" ? minigameId : "Minigame";
+		bestLabel.text = "BEST: " + Std.string(highScore);
+		showNewRecord = isNewRecord;
+		newRecordLabel.visible = isNewRecord;
 		entranceT = 0.0;
 	}
 
@@ -291,6 +320,20 @@ class ScoreScreen extends Object {
 		scoreShadow.x = cx + 2;
 		scoreShadow.y = Std.int(designH * 0.36) + 2;
 		scoreShadow.alpha = 0.2 + 0.1 * Math.sin(time * 1.2);
+
+		// Best label fade in
+		var bestEf = Math.max(0, (ef - 0.4) / 0.6);
+		bestLabel.alpha = bestEf * 0.8;
+		bestLabel.y = Std.int(designH * 0.54 + 10 * (1.0 - bestEf));
+
+		// New record pulse
+		if (showNewRecord) {
+			var nrEf = Math.max(0, (ef - 0.5) / 0.5);
+			newRecordLabel.alpha = nrEf;
+			var pulse = 1.0 + 0.08 * Math.sin(time * 4.0);
+			newRecordLabel.scaleX = 1.3 * pulse * nrEf;
+			newRecordLabel.scaleY = 1.3 * pulse * nrEf;
+		}
 
 		// Hint text pulse
 		var hintAlpha = 0.4 + 0.3 * Math.sin(time * 2.0);
