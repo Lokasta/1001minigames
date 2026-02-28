@@ -41,9 +41,11 @@ class GameFlow {
 	var currentMinigame: IMinigameScene = null;
 	var minigameNames: Array<String>;
 	var minigameFactories: Array<Void->IMinigameScene>;
-	var minigameWeights: Array<Float>;
+	var minigameCategories: Array<String>;
+	var minigameTags: Array<Array<String>>;
 	var lastScore: Int = 0;
 	var lastMinigameId: String = "";
+	var lastCategory: String = "";
 	var lastPlayedIndex: Int = -1;
 
 	var transitionT: Float;
@@ -82,7 +84,8 @@ class GameFlow {
 		root = new Object(s2d);
 		minigameNames = [];
 		minigameFactories = [];
-		minigameWeights = [];
+		minigameCategories = [];
+		minigameTags = [];
 		transitionT = 0;
 		transitioning = false;
 		transitionSkipOutgoing = false;
@@ -119,10 +122,11 @@ class GameFlow {
 		feedback = new FeedbackManager(s2d, designW, designH, root, s3d);
 	}
 
-	public function registerMinigame(name: String, factory: Void->IMinigameScene, weight: Float = 1.0) {
+	public function registerMinigame(name: String, factory: Void->IMinigameScene, ?category: String, ?tags: Array<String>) {
 		minigameNames.push(name);
 		minigameFactories.push(factory);
-		minigameWeights.push(weight < 0 ? 0.0 : weight);
+		minigameCategories.push(category != null ? category : "uncategorized");
+		minigameTags.push(tags != null ? tags : []);
 	}
 
 	function onDebugSelectMinigame(index: Int) {
@@ -333,6 +337,7 @@ class GameFlow {
 		transitionSkipOutgoing = (slideContainer.numChildren == 0);
 
 		var factory = minigameFactories[index];
+		lastCategory = minigameCategories[index];
 		currentMinigame = factory();
 		if (s3d != null && Std.isOfType(currentMinigame, IMinigame3D)) {
 			(cast currentMinigame : IMinigame3D).setScene3D(s3d);
@@ -356,39 +361,21 @@ class GameFlow {
 	}
 
 	function startTransitionToNextMinigame() {
-		var n = minigameFactories.length;
-		if (n == 0) return;
+		if (minigameFactories.length == 0) return;
 
-		var totalWeight = 0.0;
-		for (w in minigameWeights)
-			totalWeight += w;
-
-		if (totalWeight <= 0) {
-			var idx = Std.random(n);
-			while (idx == lastPlayedIndex && n > 1)
-				idx = Std.random(n);
-			startMinigameByIndexInternal(idx);
-			return;
+		// Build candidate list excluding games with the same category as last played
+		var candidates = new Array<Int>();
+		for (i in 0...minigameFactories.length) {
+			if (minigameCategories[i] != lastCategory)
+				candidates.push(i);
 		}
 
-		var idx = -1;
-		var attempts = 0;
-		while (attempts < 20) {
-			var r = Math.random() * totalWeight;
-			for (i in 0...minigameWeights.length) {
-				r -= minigameWeights[i];
-				if (r < 0) {
-					idx = i;
-					break;
-				}
-			}
-			if (idx < 0) idx = n - 1;
-			if (idx != lastPlayedIndex || n <= 1) break;
-			idx = -1;
-			attempts++;
+		// Fallback: if all games share the same category, allow any game
+		if (candidates.length == 0) {
+			startMinigameByIndexInternal(Std.random(minigameFactories.length));
+		} else {
+			startMinigameByIndexInternal(candidates[Std.random(candidates.length)]);
 		}
-		if (idx < 0) idx = Std.random(n);
-		startMinigameByIndexInternal(idx);
 	}
 
 	function finishTransition() {
@@ -445,8 +432,9 @@ class GameFlow {
 
 		lastScore = score;
 		lastMinigameId = minigameId;
+		var isFirstPlay = (HighScoreManager.getInstance().getHighScore(minigameId) == 0);
 		var result = HighScoreManager.getInstance().submitScore(minigameId, score);
-		scoreScreen.setScore(score, minigameId, result.highScore, result.isNewRecord);
+		scoreScreen.setScore(score, minigameId, result.highScore, result.isNewRecord, isFirstPlay);
 		scoreScreen.visible = true;
 		slideContainer.removeChildren();
 		slideContainer.addChild(scoreScreen);

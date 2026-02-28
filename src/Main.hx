@@ -11,32 +11,32 @@ class Main extends hxd.App {
 
 		gameFlow = new GameFlow(s2d, DESIGN_W, DESIGN_H, s3d);
 
-		// Registrar minigames (nome para debug menu + factory)
-		gameFlow.registerMinigame("Flappy Bird", function() return new scenes.minigames.FlappyBird());
-		gameFlow.registerMinigame("Dino Runner", function() return new scenes.minigames.DinoRunner());
-		gameFlow.registerMinigame("Cobrinha", function() return new scenes.minigames.SnakeGame());
-		gameFlow.registerMinigame("Guitar Hero", function() return new scenes.minigames.GuitarHero());
-		gameFlow.registerMinigame("Fruit Ninja", function() return new scenes.minigames.FruitNinja());
-		gameFlow.registerMinigame("Pênalti 3D", function() return new scenes.minigames.PenaltyShootout3D());
-		gameFlow.registerMinigame("Corrida", function() return new scenes.minigames.CarRacer3D());
-		gameFlow.registerMinigame("Whack-a-Mole", function() return new scenes.minigames.WhackAMole());
-		gameFlow.registerMinigame("Simon Says", function() return new scenes.minigames.SimonSays());
-		gameFlow.registerMinigame("Subway Surfers 3D", function() return new scenes.minigames.SubwaySurfers3D());
-		gameFlow.registerMinigame("Pong", function() return new scenes.minigames.Pong());
-		gameFlow.registerMinigame("Space Invaders", function() return new scenes.minigames.SpaceInvaders());
-		gameFlow.registerMinigame("Asteroids", function() return new scenes.minigames.Asteroids());
-		gameFlow.registerMinigame("Pac-Man", function() return new scenes.minigames.PacMan());
-		gameFlow.registerMinigame("Tetris", function() return new scenes.minigames.Tetris());
-		gameFlow.registerMinigame("Tap the Color", function() return new scenes.minigames.TapTheColor());
-		gameFlow.registerMinigame("Knife Hit", function() return new scenes.minigames.KnifeHit());
-		gameFlow.registerMinigame("Stack", function() return new scenes.minigames.Stack());
-		gameFlow.registerMinigame("Timing Ball", function() return new scenes.minigames.TimingBall());
-		gameFlow.registerMinigame("Red Light Green Light", function() return new scenes.minigames.RedLightGreenLight());
-		gameFlow.registerMinigame("2048", function() return new scenes.minigames.Game2048());
-		gameFlow.registerMinigame("Memory Cards", function() return new scenes.minigames.MemoryCards());
-		gameFlow.registerMinigame("Sliding Puzzle", function() return new scenes.minigames.SlidingPuzzle());
-		gameFlow.registerMinigame("Pipe Connect", function() return new scenes.minigames.PipeConnect());
-		gameFlow.registerMinigame("Color Match", function() return new scenes.minigames.ColorMatch());
+		// Registrar minigames (nome, factory, categoria, tags)
+		gameFlow.registerMinigame("Flappy Bird", function() return new scenes.minigames.FlappyBird(), "runner", ["runner", "reflex"]);
+		gameFlow.registerMinigame("Dino Runner", function() return new scenes.minigames.DinoRunner(), "runner", ["runner", "reflex"]);
+		gameFlow.registerMinigame("Cobrinha", function() return new scenes.minigames.SnakeGame(), "arcade", ["arcade", "puzzle"]);
+		gameFlow.registerMinigame("Guitar Hero", function() return new scenes.minigames.GuitarHero(), "rhythm", ["rhythm", "reflex"]);
+		gameFlow.registerMinigame("Fruit Ninja", function() return new scenes.minigames.FruitNinja(), "reflex", ["reflex", "action"]);
+		gameFlow.registerMinigame("Pênalti 3D", function() return new scenes.minigames.PenaltyShootout3D(), "sports", ["sports", "3d"]);
+		gameFlow.registerMinigame("Corrida", function() return new scenes.minigames.CarRacer3D(), "runner", ["runner", "3d"]);
+		gameFlow.registerMinigame("Whack-a-Mole", function() return new scenes.minigames.WhackAMole(), "reflex", ["reflex", "action"]);
+		gameFlow.registerMinigame("Simon Says", function() return new scenes.minigames.SimonSays(), "memory", ["memory", "puzzle"]);
+		gameFlow.registerMinigame("Subway Surfers 3D", function() return new scenes.minigames.SubwaySurfers3D(), "runner", ["runner", "3d"]);
+		gameFlow.registerMinigame("Pong", function() return new scenes.minigames.Pong(), "arcade", ["arcade", "reflex"]);
+		gameFlow.registerMinigame("Space Invaders", function() return new scenes.minigames.SpaceInvaders(), "shooter", ["shooter", "arcade"]);
+		gameFlow.registerMinigame("Asteroids", function() return new scenes.minigames.Asteroids(), "shooter", ["shooter", "arcade"]);
+		gameFlow.registerMinigame("Pac-Man", function() return new scenes.minigames.PacMan(), "arcade", ["arcade", "action"]);
+		gameFlow.registerMinigame("Tetris", function() return new scenes.minigames.Tetris(), "puzzle", ["puzzle", "strategy"]);
+		gameFlow.registerMinigame("Tap the Color", function() return new scenes.minigames.TapTheColor(), "reflex", ["reflex", "puzzle"]);
+		gameFlow.registerMinigame("Knife Hit", function() return new scenes.minigames.KnifeHit(), "timing", ["timing", "reflex"]);
+		gameFlow.registerMinigame("Stack", function() return new scenes.minigames.Stack(), "timing", ["timing", "reflex"]);
+		gameFlow.registerMinigame("Timing Ball", function() return new scenes.minigames.TimingBall(), "timing", ["timing", "reflex"]);
+		gameFlow.registerMinigame("Red Light Green Light", function() return new scenes.minigames.RedLightGreenLight(), "reflex", ["reflex", "action"]);
+		gameFlow.registerMinigame("2048", function() return new scenes.minigames.Game2048(), "puzzle", ["puzzle", "strategy"]);
+		gameFlow.registerMinigame("Memory Cards", function() return new scenes.minigames.MemoryCards(), "memory", ["memory", "puzzle"]);
+		gameFlow.registerMinigame("Sliding Puzzle", function() return new scenes.minigames.SlidingPuzzle(), "puzzle", ["puzzle", "strategy"]);
+		gameFlow.registerMinigame("Pipe Connect", function() return new scenes.minigames.PipeConnect(), "puzzle", ["puzzle", "strategy"]);
+		gameFlow.registerMinigame("Color Match", function() return new scenes.minigames.ColorMatch(), "reflex", ["reflex", "puzzle"]);
 	}
 
 	override function onResize() {
