@@ -14,6 +14,8 @@ Design resolution: **360x640** (mobile portrait, LetterBox scale mode). **Mobile
 - **Dev mode (hot reload):** `npm run dev` — watches `src/` files, recompiles, serves at `http://localhost:8080`
 - **Compile (Android/C):** `haxe compile_android.hxml` — outputs C to `android/app/src/main/cpp/out/`
 - **Android APK:** `cd android && ./gradlew assembleDebug`
+- **iOS setup:** `./scripts/setup-ios.sh` — downloads SDL2, copies HashLink source, generates Xcode project
+- **iOS build:** Open `ios/build/TokTokGames.xcodeproj`, select scheme **TokTokGames**, pick device, Cmd+R
 
 There are no tests or linting configured.
 
@@ -66,3 +68,22 @@ See `ExampleMinigame.hx` for the simplest reference implementation.
 - Heaps library (`haxelib git heaps https://github.com/HeapsIO/heaps.git`)
 - `HAXE_STD_PATH="/opt/homebrew/lib/haxe/std"` must be set
 - Node.js only needed for `npm run dev` (hot reload via nodemon + live-server)
+
+### iOS-specific
+- Xcode with iOS SDK
+- Apple Developer account (for device deployment)
+- HashLink (`brew install hashlink`)
+- CMake (`brew install cmake`)
+- Run `./scripts/setup-ios.sh` to download deps and generate the Xcode project
+
+### iOS Build Architecture
+
+The iOS build uses Haxe → HashLink/C → native compilation:
+
+1. `haxe compile_ios.hxml` compiles Haxe to C via HashLink (outputs to `ios/hlc_out/`)
+2. CMake generates an Xcode project linking: libhl (HashLink runtime), SDL2 (window/input/audio), fmt.hdll (PNG/audio formats), sdl.hdll (HL-SDL bridge), ui.hdll (stub)
+3. Xcode builds and signs for iOS device
+
+**Key files (committed):** `compile_ios.hxml`, `ios/CMakeLists.txt`, `ios/Info.plist.in`, `ios/deps/hl_stubs.c`, `ios/deps/turbojpeg_stub/turbojpeg.h`
+
+**Large deps (gitignored, downloaded by setup script):** `ios/deps/sdl2/` (SDL2 2.30.11), `ios/deps/hashlink/` (HashLink source), `ios/hlc_out/` (generated C), `ios/build/` (Xcode project)

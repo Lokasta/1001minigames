@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-02-28
+- **Feature**: Native iOS build - Haxe/HashLink/C pipeline with SDL2 2.30.11, CMake + Xcode, runs on real iOS devices
+- **DevOps**: iOS setup script (`scripts/setup-ios.sh`) downloads SDL2 & HashLink source, patches for iOS, generates Xcode project
+- **DevOps**: Updated .gitignore to exclude large iOS/Android deps and build artifacts (open-source safe)
+
 ## 2026-02-27
 - **Feature**: Red Light Green Light minigame - Round 6 style, hold to run forward, release on red light, doll turns around on red (menacing eyes), traffic light (green/yellow/red), rival NPCs running alongside, reach finish line for bonus + new round with harder timing, speed increases each round
 - **Feature**: Timing Ball minigame - bouncing ball with gravity, tap to bounce upward, red obstacle bars scroll down with gaps to pass through, gap shrinks over time (80→50px), speed ramp (100→220 px/s), squash/stretch ball animation, trail particles, floor shadow

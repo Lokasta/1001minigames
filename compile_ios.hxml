@@ -1,0 +1,13 @@
+# Build for iOS (HashLink/C + SDL)
+# Output goes to ios/hlc_out/ for the native iOS Xcode project.
+
+-cp src
+-main Main
+-lib heaps
+-lib format
+-lib hlsdl
+
+# HashLink C output
+-hl ios/hlc_out/main.c
+
+-D debug

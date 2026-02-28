@@ -38,5 +38,14 @@ dist/
 hello.js
 hello.js.map
 
-# Android (clone heaps-android here; local build state)
+# Android (local build state, large deps)
 android/
+
+# iOS — large deps and generated files (use scripts/setup-ios.sh to download)
+ios/build/
+ios/hlc_out/
+ios/deps/sdl2/
+ios/deps/hashlink/
+
+# Debug screenshots
+*.png

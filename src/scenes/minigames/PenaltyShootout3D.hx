@@ -96,6 +96,8 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 	var lastGoal:Bool;
 	var lastSaved:Bool;
 	var camFollowT:Float;
+	var failures:Int;
+	static var MAX_FAILURES = 3;
 
 	public var content(get, never):h2d.Object;
 
@@ -229,6 +231,7 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		lastGoal = false;
 		lastSaved = false;
 		camFollowT = 0;
+		failures = 0;
 	}
 
 	public function setScene3D(scene:Scene) {
@@ -540,6 +543,7 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 		started = false;
 		score = 0;
 		gameOver = false;
+		failures = 0;
 		state = Idle3D;
 		touching = false;
 		resultTimer = 0;
@@ -613,7 +617,7 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 
 			if (resultTimer >= resultDuration) {
 				resultText.visible = false;
-				if (lastSaved) {
+				if (failures >= MAX_FAILURES) {
 					gameOver = true;
 					ctx.lose(score, getMinigameId());
 					ctx = null;
@@ -666,11 +670,12 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 				var saved = inGoal && ballX >= keeperX - margin && ballX <= keeperX + margin;
 
 				if (saved) {
+					failures++;
 					if (ctx != null && ctx.feedback != null)
 						ctx.feedback.shake2D(0.3, 5);
 					lastSaved = true;
 					lastGoal = false;
-					showResult("DEFENDEU!", 0xFF4444);
+					showResult("DEFENDEU! (" + failures + "/" + MAX_FAILURES + ")", 0xFF4444);
 					resultTimer = 0;
 					resultDuration = RESULT_DURATION_SAVE;
 					state = Result3D;
@@ -690,9 +695,10 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 					state = Result3D;
 					return;
 				} else {
+					failures++;
 					lastGoal = false;
 					lastSaved = false;
-					showResult("FORA!", 0xFFDD00);
+					showResult("FORA! (" + failures + "/" + MAX_FAILURES + ")", 0xFFDD00);
 					resultTimer = 0;
 					resultDuration = RESULT_DURATION_MISS;
 					state = Result3D;
@@ -701,9 +707,10 @@ class PenaltyShootout3D implements IMinigameSceneWithLose implements IMinigameUp
 			}
 
 			if (ballZ > 20 || ballY < -5 || flightTime > 3.0) {
+				failures++;
 				lastGoal = false;
 				lastSaved = false;
-				showResult("FORA!", 0xFFDD00);
+				showResult("FORA! (" + failures + "/" + MAX_FAILURES + ")", 0xFFDD00);
 				resultTimer = 0;
 				resultDuration = RESULT_DURATION_MISS;
 				state = Result3D;
